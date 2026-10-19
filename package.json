@@ -1,6 +1,6 @@
 {
   "name": "@local/voice-conversation",
-  "version": "1.8.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Hands-free voice conversation: auto-send after voice transcription and read assistant replies aloud.",
@@ -17,7 +17,12 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "HANDOFF.md",
+    "docs/*.md",
+    "docs/voice-preview.html",
+    "edge-bridge/*.py",
+    "edge-bridge/requirements.txt"
   ],
   "dsh": {
     "bundle": {
@@ -30,5 +35,14 @@
         "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check client.js && node --check impl.mjs && node --check host.mjs"
+  },
+  "devDependencies": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-test-renderer": "18.2.0"
   }
 }

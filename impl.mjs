@@ -1,11 +1,8 @@
 /**
- * Host half of the voice-conversation bundle: proxies browser requests to one
- * speech backend over two authenticated, same-origin routes. Two engines:
- * `gsv` manages a local GPT-SoVITS api_v2.py process (spawned lazily on warmup
- * or first synthesis, kept warm while the switch is on, stopped on switch-off
- * after in-flight synthesis settles, with a long-idle safety net); `minimax`
- * calls the MiniMax T2A cloud API and owns no local process. Both engines
- * answer raw PCM16 mono at 32 kHz so the browser playback path is identical.
+ * Authenticated speech proxy. Edge TTS is the default cloud engine, reached
+ * through the existing local lightweight bridge. Legacy GSV/MiniMax routes
+ * remain compatible with explicit configurations; the UI does not select or
+ * install a local clone model. Diagnostics use a bounded asynchronous queue.
  * @module @local/voice-conversation
  */
 
@@ -16,7 +13,7 @@ function optional(ctx, name) {
   return value === undefined || value === null ? undefined : value
 }
 
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFile, mkdir } from 'node:fs/promises'
 
 const ROUTE_TTS = '/voice-tts/tts'
 const ROUTE_CONTROL = '/voice-tts/control'
@@ -70,7 +67,7 @@ export function apply(ctx, userConfig) {
     maxIdleMs: 30 * 60_000,
     unloadGraceMs: 5 * 60_000,
     // engine: 'gsv' = 本地 GPT-SoVITS 克隆; 'minimax' = MiniMax T2A 云端。
-    engine: 'gsv',
+    engine: 'edge',
     minimaxApiKey: process.env.MINIMAX_API_KEY || '',
     minimaxGroupId: process.env.MINIMAX_GROUP_ID || '',
     minimaxHost: 'https://api.minimaxi.com',
@@ -78,6 +75,18 @@ export function apply(ctx, userConfig) {
     minimaxVoiceId: 'male-qn-qingse',
     minimaxSynthTimeoutMs: 30_000,
     ...(userConfig || {}),
+  }
+  // Best-effort, bounded, asynchronous logging: synchronous disk writes on
+  // every audio chunk can stall the Host event loop and its desktop bridge.
+  let logQueue = Promise.resolve(), queuedLogs = 0
+  function appendLog(file, text) {
+    if (queuedLogs >= 128) return
+    queuedLogs++
+    const bounded = String(text).slice(0, 65536)
+    logQueue = logQueue.then(async () => {
+      await mkdir(config.home, { recursive: true })
+      await appendFile(file, bounded)
+    }).catch(() => {}).finally(() => { queuedLogs-- })
   }
   if (!config.refAudioPath) config.refAudioPath = `${config.home}/ref.wav`
   if (!config.promptText) {
@@ -136,16 +145,15 @@ export function apply(ctx, userConfig) {
     let stderrOffset = 0
     ctx.effect(() => ctx.timer.interval(() => {
       try {
-        mkdirSync(config.home, { recursive: true })
         if (child && child.collected && child.collected.stdout) {
           const read = child.collected.stdout.readFrom(stdoutOffset)
           stdoutOffset = read.nextOffset
-          if (read.text) appendFileSync(logFile, read.text)
+          if (read.text) appendLog(logFile, read.text)
         }
         if (child && child.collected && child.collected.stderr) {
           const read = child.collected.stderr.readFrom(stderrOffset)
           stderrOffset = read.nextOffset
-          if (read.text) appendFileSync(logFile, read.text)
+          if (read.text) appendLog(logFile, read.text)
         }
       } catch { /* logging must never break the plugin */ }
     }, 2000), 'voice-conversation: server log tee')
@@ -493,13 +501,13 @@ export function apply(ctx, userConfig) {
                 chunkCount++
                 if (!firstByteMs) firstByteMs = Date.now() - reqT0
                 try {
-                  appendFileSync(`${config.home}/voice-flow.log`,
+                  appendLog(`${config.home}/voice-flow.log`,
                     `${new Date().toISOString()} tts.chunk n=${chunkCount} bytes=${chunk.length} atMs=${Date.now() - reqT0}\n`)
                 } catch { /* noop */ }
                 if (!res.write(chunk)) await new Promise(r => res.once('drain', r))
               }
               try {
-                appendFileSync(`${config.home}/voice-flow.log`,
+                appendLog(`${config.home}/voice-flow.log`,
                   `${new Date().toISOString()} tts.stream-done chars=${text.length} engine=minimax readyMs=${readyMs} chunks=${chunkCount} totalMs=${Date.now() - reqT0}\n`)
               } catch { /* noop */ }
             } finally { /* generator cleans up its reader */ }
@@ -519,13 +527,13 @@ export function apply(ctx, userConfig) {
                 firstByteMs = Date.now() - reqT0
               }
               try {
-                appendFileSync(`${config.home}/voice-flow.log`,
+                appendLog(`${config.home}/voice-flow.log`,
                   `${new Date().toISOString()} tts.chunk n=${chunkCount} bytes=${chunk.length} atMs=${Date.now() - reqT0}\n`)
               } catch { /* noop */ }
               if (!res.write(chunk)) await new Promise(r => res.once('drain', r))
             }
             try {
-              appendFileSync(`${config.home}/voice-flow.log`,
+              appendLog(`${config.home}/voice-flow.log`,
                 `${new Date().toISOString()} tts.stream-done chars=${text.length} readyMs=${readyMs} chunks=${chunkCount} totalMs=${Date.now() - reqT0}\n`)
             } catch { /* noop */ }
           } finally { upstream.cancel().catch(() => {}) }
@@ -539,18 +547,16 @@ export function apply(ctx, userConfig) {
             ? await callEdge(text, speed, payload?.voice)
             : await callTts(text, speed)
         try {
-          mkdirSync(config.home, { recursive: true })
-          appendFileSync(`${config.home}/voice-flow.log`,
+          appendLog(`${config.home}/voice-flow.log`,
             `${new Date().toISOString()} tts.done chars=${text.length} readyMs=${readyMs} synthMs=${Date.now() - synthT0} bytes=${wav.length}\n`)
         } catch { /* noop */ }
         res.statusCode = 200
-        res.setHeader('content-type', 'audio/wav')
+        res.setHeader('content-type', engine === 'edge' ? 'audio/mpeg' : 'audio/wav')
         res.end(wav)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         try {
-          mkdirSync(config.home, { recursive: true })
-          appendFileSync(`${config.home}/proxy-errors.log`, `${new Date().toISOString()} 502 ${message}\n`)
+          appendLog(`${config.home}/proxy-errors.log`, `${new Date().toISOString()} 502 ${message}\n`)
         } catch { /* logging must never break the route */ }
         sendJson(res, 502, { message })
       } finally { inFlight--; touch() }
@@ -580,17 +586,15 @@ export function apply(ctx, userConfig) {
           sendJson(res, 200, { status: 'off' })
         } else if (action === 'flow') {
           try {
-            mkdirSync(config.home, { recursive: true })
-            const lines = Array.isArray(payload?.lines) ? payload.lines : []
+            const lines = Array.isArray(payload?.lines) ? payload.lines.slice(0, 64) : []
             if (lines.length) {
-              appendFileSync(`${config.home}/voice-flow.log`, lines.map(l => String(l).slice(0, 300) + '\n').join(''))
+              appendLog(`${config.home}/voice-flow.log`, lines.map(l => String(l).slice(0, 300) + '\n').join(''))
             }
           } catch { /* logging must never break the route */ }
           sendJson(res, 200, { status: 'logged' })
         } else if (action === 'client-error') {
           try {
-            mkdirSync(config.home, { recursive: true })
-            appendFileSync(`${config.home}/client-errors.log`,
+            appendLog(`${config.home}/client-errors.log`,
               `${new Date().toISOString()} ${String(payload?.message || '').slice(0, 800)}\n${String(payload?.stack || '').slice(0, 6000)}\n\n`)
           } catch { /* logging must never break the route */ }
           sendJson(res, 200, { status: 'logged' })
