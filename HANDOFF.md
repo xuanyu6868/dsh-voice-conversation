@@ -31,7 +31,7 @@
 | 插件源码（工作区） | `~/Documents/deepseek-harness/default-workspace/voice-conversation/` |
 | 插件组成 | `client.js`（浏览器端全部 UI/逻辑）、`host.mjs`（Host 引导层，勿改）、`impl.mjs`（Host 逻辑层）、`cordis.patch.yml`、`locale/`、`icon.svg` |
 | 插件安装 | 已装到 profile `desktop`，链接到工作区目录；行 id `include:voice-conversation` |
-| Edge TTS 桥接 | `~/.dsh/edge-tts/`：`edge-server.py`（127.0.0.1:9884）+ 精简 venv（uv，Python 3.10）；插件按需自动拉起 |
+| Edge TTS 桥接 | `~/.dsh/edge-tts/`：`edge-server.py`（127.0.0.1:9884，源码与依赖清单在仓库 `edge-bridge/`）+ 精简 venv（uv，Python 3.10，edge-tts==7.3.1）；插件按需自动拉起 |
 | 日志 | `~/.dsh/edge-tts/voice-flow.log`（全链路关卡打点）、`client-errors.log`（页面黑匣子）、`proxy-errors.log` |
 | 语音识别（勿删） | `~/.dsh/speech-to-text/`（官方 SenseVoice，语音输入在用） |
 
