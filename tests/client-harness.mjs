@@ -53,7 +53,11 @@ export function recordingMocks(getUserMedia) {
   class AudioContext {
     constructor() { this.state = 'running'; this.closed = 0; }
     createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData(data) { data.fill(0); } }; }
-    createMediaStreamSource() { return { connect() {} }; }
+    sampleRate = 16000;
+    destination = {};
+    createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    createScriptProcessor() { return { connect() {}, disconnect() {} }; }
     close() { this.closed++; return Promise.resolve(); }
     resume() { return Promise.resolve(); }
     decodeAudioData() { return Promise.resolve({ duration: 1 }); }
@@ -64,5 +68,5 @@ export function recordingMocks(getUserMedia) {
     start() { this.state = 'recording'; }
     stop() { this.state = 'inactive'; }
   }
-  return { streams, AudioContext, MediaRecorder, navigator: { mediaDevices: { getUserMedia: media } } };
+  return { streams, AudioContext, MediaRecorder, navigator: { mediaDevices: { getUserMedia: media, enumerateDevices: async () => [] } } };
 }

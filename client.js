@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     const NS = 'voice-conversation';
-    const PLUGIN_VERSION = '2.0.0';
+    const PLUGIN_VERSION = '2.1.0';
     const zh = {
       'start.begin': '开始语音对话',
       'start.return': '返回语音',
@@ -31,16 +31,16 @@ window.__ModuleLoader__.load({
       'page.settings': '语音设置',
       'page.hint.listening': '直接说话，停顿后自动发送',
       'page.hint.muted': '已静音，取消静音后继续',
-      'page.hint.editing': '文字已保留；可编辑后手动发送，或继续聆听',
       'page.hint.default': '语音内容保留在当前会话中',
-      'state.connecting': '正在连接…',
+      'state.connecting': '正在连接…', 'state.micStarting': '正在连接麦克风…', 'state.micRecovering': '麦克风连接恢复中…',
+      'input.recognizing': '正在转写', 'input.sending': '正在发送…', 'input.placeholder': '正在识别…',
+      'input.unconfirmed': '发送结果未确认，请先检查会话记录', 'page.hint.speaking': '可以直接说话打断，麦克风持续开启',
       'state.listening': '正在聆听',
       'state.transcribing': '正在识别…',
       'state.thinking': '正在思考…',
       'state.speaking': '正在回答',
       'state.muted': '麦克风已静音',
       'state.error': '连接失败',
-      'state.editing': '已暂停自动发送',
       'state.off': '语音未开启',
       'state.requesting': '请求麦克风权限…',
       'action.mute': '静音',
@@ -52,7 +52,6 @@ window.__ModuleLoader__.load({
       'action.resumeListening': '继续聆听',
       'action.retrySpeak': '重试朗读',
       'action.expand': '展开语音页',
-      'action.cancelSend': '取消自动发送',
       'action.backToVoice': '返回语音会话',
       'action.speak': '朗读',
       'mini.foreign': '语音会话进行中（另一会话）',
@@ -67,9 +66,9 @@ window.__ModuleLoader__.load({
       'settings.engine': '合成引擎',
       'settings.engineState': '克隆服务状态',
       'settings.asr': '识别服务',
-      'settings.asrReady': '可用（本地 SenseVoice）',
+      'settings.asrReady': '宿主配置的识别服务（增量识别）',
       'settings.asrMissing': '不可用',
-      'settings.vadNote': '停顿 1.3 秒自动发送；单次最长录音 30 秒',
+      'settings.vadNote': '停顿约 0.7 秒直接发送；持续录音与增量转写，朗读时可插话',
       'settings.gsvOff': '未启动',
       'settings.gsvStarting': '启动中…',
       'settings.gsvReady': '就绪',
@@ -81,11 +80,12 @@ window.__ModuleLoader__.load({
       'captions.backToLatest': '回到最新',
       'error.micDenied': '麦克风不可用或权限被拒绝',
       'error.noAsr': '识别服务不可用',
-      'error.asrFailed': '识别失败，已继续聆听',
+      'error.asrFailed': '识别失败，该句未发送；麦克风继续工作',
+      'error.asrBacklog': '识别积压，请稍后再说',
+      'error.micStalled': '麦克风没有音频，请检查输入设备并重试',
       'error.gsvFailed': '克隆服务启动失败',
       'error.draftBusy': '输入框有未发送内容，转写未写入',
       'error.synthFailed': '语音合成失败',
-      'send.pending': '即将自动发送',
     };
     const en = {
       'start.begin': 'Start voice chat',
@@ -97,16 +97,16 @@ window.__ModuleLoader__.load({
       'page.settings': 'Voice settings',
       'page.hint.listening': 'Just speak; a pause sends it',
       'page.hint.muted': 'Muted; unmute to continue',
-      'page.hint.editing': 'Text is kept; edit and send it manually, or resume listening',
       'page.hint.default': 'Voice stays in this conversation',
-      'state.connecting': 'Connecting…',
+      'state.connecting': 'Connecting…', 'state.micStarting': 'Connecting microphone…', 'state.micRecovering': 'Recovering microphone…',
+      'input.recognizing': 'Transcribing', 'input.sending': 'Sending…', 'input.placeholder': 'Recognizing…',
+      'input.unconfirmed': 'Send unconfirmed; check conversation history', 'page.hint.speaking': 'Speak to interrupt; the microphone stays on',
       'state.listening': 'Listening',
       'state.transcribing': 'Transcribing…',
       'state.thinking': 'Thinking…',
       'state.speaking': 'Answering',
       'state.muted': 'Microphone muted',
       'state.error': 'Connection failed',
-      'state.editing': 'Auto-send paused',
       'state.off': 'Voice off',
       'state.requesting': 'Requesting microphone…',
       'action.mute': 'Mute',
@@ -118,7 +118,6 @@ window.__ModuleLoader__.load({
       'action.resumeListening': 'Resume listening',
       'action.retrySpeak': 'Retry speaking',
       'action.expand': 'Expand voice page',
-      'action.cancelSend': 'Cancel auto-send',
       'action.backToVoice': 'Back to the voice session',
       'action.speak': 'Read aloud',
       'mini.foreign': 'Voice session active (another chat)',
@@ -151,22 +150,19 @@ window.__ModuleLoader__.load({
       'error.gsvFailed': 'Clone service failed to start',
       'error.draftBusy': 'Draft has unsent text; transcript not written',
       'error.synthFailed': 'Speech synthesis failed',
-      'send.pending': 'Sending soon',
     };
 
     Object.assign(zh, {
       'start.here': '在此会话开启语音', 'page.context': '沿用当前会话上下文',
       'page.foreign': '语音仍属于上方标注的会话；当前选择了另一会话。',
-      'page.footer': '键盘文字仅手动发送 · 最小化保留语音与朗读',
+      'page.footer': '语音停顿直接发送 · 键盘手动发送 · 最小化持续聆听',
       'keyboard.title': '键盘输入', 'keyboard.placeholder': '在这里输入，与当前会话继续对话…',
-      'keyboard.hint': '键盘输入时暂停聆听；关闭键盘后继续，不会自动发送文字。',
+      'keyboard.hint': '键盘文字手动发送；同时仍可直接说话。',
       'keyboard.shortcut': 'Enter 发送 · Shift + Enter 换行',
       'action.keyboard': '键盘', 'action.send': '发送', 'action.edit': '编辑', 'action.clear': '清除',
-      'state.editing': '转写待确认', 'captions.empty': '从这一刻继续对话',
+      'captions.empty': '从这一刻继续对话',
       'captions.hidden': '对话记录已隐藏，点击“对话记录”重新显示', 'action.captions': '对话记录',
-      'send.pending': '语音转写将在 1.5 秒后发送', 'send.review': '语音转写待确认，展开语音页后发送',
-      'page.hint.editing': '转写保留在语音页，可确认发送或编辑。',
-      'settings.asrReady': '宿主已配置的识别服务', 'settings.vadNote': '连续语音触发识别；纯标点转写不发送。语音页自动发送等待 1.5 秒。',
+      'settings.asrReady': '宿主配置的识别服务（增量识别）', 'settings.vadNote': '边说边转写；停顿约 0.7 秒直接提交，无确认倒计时。朗读时可说话打断。',
       'error.sendFailed': '发送未成功，文字已保留，请确认会话连接后重试。',
       'error.sendUnknown': '发送结果暂未确认，请先查看会话记录，勿重复发送。',
       'error.sessionUnavailable': '当前会话接口不可用，请更新或重新连接 Harness。',
@@ -176,14 +172,12 @@ window.__ModuleLoader__.load({
       'page.foreign': 'Voice still belongs to the chat shown above; another chat is selected.',
       'page.footer': 'Typed text is sent manually · Minimizing keeps voice and playback',
       'keyboard.title': 'Keyboard input', 'keyboard.placeholder': 'Type here to continue this conversation…',
-      'keyboard.hint': 'Listening pauses while typing. Close the keyboard to resume; typed text never auto-sends.',
+      'keyboard.hint': 'Typed text is sent manually; the microphone stays on.',
       'keyboard.shortcut': 'Enter to send · Shift + Enter for a new line',
       'action.keyboard': 'Keyboard', 'action.send': 'Send', 'action.edit': 'Edit', 'action.clear': 'Clear',
-      'state.editing': 'Review transcript', 'captions.empty': 'Continue the conversation here',
+      'captions.empty': 'Continue the conversation here',
       'captions.hidden': 'Conversation hidden. Select Conversation to show it.', 'action.captions': 'Conversation',
-      'send.pending': 'Voice transcript sends in 1.5 seconds', 'send.review': 'Review and send this transcript in the voice page',
-      'page.hint.editing': 'Transcript kept here; send or edit it when ready.',
-      'settings.asrReady': 'Recognition service configured in Harness', 'settings.vadNote': 'Continuous speech triggers recognition; punctuation-only results are discarded. Voice-page auto-send waits 1.5s.',
+      'settings.asrReady': 'Recognition service configured in Harness', 'settings.vadNote': 'Incremental transcription; a ~0.7s pause submits without confirmation. Speak to interrupt playback.',
       'error.sendFailed': 'Send failed. Your text is kept; check the session connection before retrying.',
       'error.sendUnknown': 'Send result is unconfirmed. Check conversation history before sending again.',
       'error.sessionUnavailable': 'Session API unavailable. Update or reconnect Harness.',
@@ -197,14 +191,12 @@ window.__ModuleLoader__.load({
       && typeof window.SpeechSynthesisUtterance === 'function';
     const REC_OK = typeof navigator !== 'undefined'
       && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-      && typeof MediaRecorder !== 'undefined'
       && typeof AudioContext !== 'undefined';
 
     const GSV_VOICE = 'gsv-local';
     const ROUTE_TTS = '/voice-tts/tts';
     const ROUTE_CONTROL = '/voice-tts/control';
 
-    const SEND_DELAY_MS = 1500;
     const MAX_SPEAK_CHARS = 4000;
     const PREFS_KEY = 'dsh-voice-conversation.prefs';
     const RATES = ['0.75', '1', '1.25', '1.5', '2'];
@@ -221,7 +213,7 @@ window.__ModuleLoader__.load({
     const VAD_START_RMS = 0.015;
     const VAD_START_MS = 250;
     const VAD_STOP_RMS = 0.008;
-    const VAD_STOP_MS = 1300;
+    const VAD_STOP_MS = 700;
     const VAD_MAX_MS = 30000;
     const VAD_NOSPEECH_MS = 12000;
 
@@ -324,17 +316,16 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     const sessionViews = new Map(); // UI drafts only; conversation history remains owned by Harness.
-    let sendTimer = null;
     let lease = null;
     const levelListeners = new Set();
     const voice = {
       phase: 'off', sessionId: null, owner: null, version: 0,
       muted: false, requesting: false, error: '', errors: { mic: '', asr: '', draft: '', synth: '' }, errorScope: '', errorVersion: 0,
       captionsOn: loadPrefs().captions !== false, settingsOpen: false, keyboardOpen: false,
-      keyboardDraft: '', transcriptDraft: '', keyboardRevision: 0, transcriptRevision: 0, pageVisible: false,
+      keyboardDraft: '', keyboardRevision: 0, pageVisible: false,
+      inputRows: [], captureState: 'off', readBlocked: false, readAfterSeq: -1,
       messages: [], subtitles: [], level: 0, speakingText: '', spokenId: null,
-      sessionGen: 0, turnId: 0, sendId: 0, sendPending: false, sendConsumed: true,
-      sendDraft: '', sendOwner: null, sendSessionGen: 0, sendTurnId: 0,
+      sessionGen: 0, turnId: 0,
       sending: false, awaitingReply: false, modelRunning: false, runObserved: false, lastReply: null, startedAt: 0,
       listeners: new Set(),
       notify() { this.version++; for (const fn of [...this.listeners]) fn(); },
@@ -343,48 +334,13 @@ window.__ModuleLoader__.load({
     };
 
     function meaningfulTranscript(value) {
-      const text = String(value || '').replace(/<\|[^|]*\|>/g, '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim();
-      return /[\p{L}\p{N}]/u.test(text) ? text : '';
-    }
-
-    function clearSendTimer() {
-      if (sendTimer !== null) { clearTimeout(sendTimer); sendTimer = null; }
-    }
-
-    function beginPendingSend(text) {
-      clearSendTimer();
-      if (!voice.owner || !voice.pageVisible || voice.keyboardOpen || !meaningfulTranscript(text)) return false;
-      voice.sendId++;
-      voice.sendDraft = text;
-      voice.sendOwner = voice.owner;
-      voice.sendSessionGen = voice.sessionGen;
-      voice.sendTurnId = voice.turnId;
-      voice.set({ sendPending: true, sendConsumed: false, phase: 'editing' });
-      const id = voice.sendId;
-      sendTimer = setTimeout(() => { sendTimer = null; void submitPendingSend(id); }, SEND_DELAY_MS);
-      flowLog('send.armed', 'id=' + id + ' source=asr');
-      return id;
-    }
-
-    function cancelPendingSend(reason = 'user-cancel') {
-      const hadPending = voice.sendPending;
-      clearSendTimer();
-      voice.sendId++;
-      voice.set({ sendPending: false, sendConsumed: true });
-      if (hadPending) flowLog('send.cancel', reason);
-      return hadPending;
-    }
-
-    function discardPendingSend(reason) { return cancelPendingSend(reason); }
-
-    async function submitPendingSend(id) {
-      if (!voice.sendPending || voice.sendConsumed || voice.sendId !== id) return false;
-      const valid = voice.owner === voice.sendOwner && voice.sessionGen === voice.sendSessionGen
-        && voice.turnId === voice.sendTurnId && voice.transcriptDraft === voice.sendDraft
-        && voice.pageVisible && !voice.keyboardOpen;
-      cancelPendingSend(valid ? 'claimed' : 'stale'); // claim synchronously before any await
-      if (!valid) return false;
-      return dispatchMessage(voice.sendDraft, 'asr');
+      let text = String(value || '').replace(/<\|[^|]*\|>/g, '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim();
+      if (!/[\p{L}\p{N}]/u.test(text)) return '';
+      // Remove orphan ASR punctuation, not legitimate sentence punctuation,
+      // signed numbers, decimals or opening quotation marks.
+      text = text.replace(/^[。！？，、；：!?;,：\s]+/u, '').replace(/^\.+(?!\d)/u, '')
+        .replace(/([。！？!?，,；;])(?:\s*\1)+/gu, '$1').trim();
+      return text;
     }
 
     function withDeadline(promise, ms) {
@@ -394,83 +350,56 @@ window.__ModuleLoader__.load({
       })]).finally(() => clearTimeout(timer));
     }
 
-    async function dispatchMessage(value, source = 'keyboard') {
+    async function dispatchMessage(value, source = 'keyboard', options = {}) {
       const text = String(value || '').trim();
       const owner = voice.owner, gen = voice.sessionGen;
-      const key = source === 'asr' ? 'transcriptDraft' : 'keyboardDraft';
-      const revisionKey = source === 'asr' ? 'transcriptRevision' : 'keyboardRevision';
+      const key = 'keyboardDraft', revisionKey = 'keyboardRevision';
       const revision = voice[revisionKey];
-      if (!text || !owner || !voice.pageVisible || voice.phase === 'off' || !voice.ready || voice.sending || voice.modelRunning || voice.awaitingReply) return false;
-      if (source === 'asr' && (!voice.pageVisible || !meaningfulTranscript(text))) return false;
-      cancelPendingSend('explicit-submit');
+      if (!text || !owner || voice.phase === 'off' || !voice.ready || voice.sending) return false;
+      if (source === 'keyboard' && !voice.pageVisible) return false;
+      if (source === 'asr' && !meaningfulTranscript(text)) return false;
+      const row = options.row || inputRow();
+      updateInput(row, { text, status: 'sending' });
       voice.turnId++;
-      releaseRecorder();
+      const mode = options.interrupt || voice.modelRunning || voice.awaitingReply || isSpeaking() ? 'steer' : 'queue';
+      if (mode === 'steer') voice.readBlocked = true;
       stopSpeaking();
       clearScopedError('draft');
       voice.set({ sending: true, awaitingReply: true, runObserved: false, phase: 'thinking' });
-      flowLog('send.start', 'source=' + source + ' chars=' + text.length);
+      flowLog('send.start', 'source=' + source + ' mode=' + mode + ' chars=' + text.length);
       try {
-        await withDeadline(owner.send(text), 20_000);
+        await withDeadline(owner.send(text, mode), 20_000);
         if (voice.owner !== owner || voice.sessionGen !== gen) {
           const saved = sessionViews.get(owner.sessionId);
-          if (saved && saved[revisionKey] === revision && saved[key].trim() === text) { saved[key] = ''; saved[revisionKey]++; }
-          if (voice.sessionId === owner.sessionId && voice[revisionKey] === revision && voice[key].trim() === text) voice.set({ [key]: '', [revisionKey]: revision + 1 });
+          if (source === 'keyboard' && saved && saved[revisionKey] === revision && saved[key].trim() === text) { saved[key] = ''; saved[revisionKey]++; }
+          if (source === 'keyboard' && voice.sessionId === owner.sessionId && voice[revisionKey] === revision && voice[key].trim() === text) voice.set({ [key]: '', [revisionKey]: revision + 1 });
           return true;
         }
-        if (voice[revisionKey] === revision && voice[key].trim() === text) { voice[key] = ''; voice[revisionKey]++; }
+        if (source === 'keyboard' && voice[revisionKey] === revision && voice[key].trim() === text) { voice[key] = ''; voice[revisionKey]++; }
         voice.set({ sending: false });
+        updateInput(row, { status: 'accepted' });
         flowLog('send.accepted', 'source=' + source);
         return true;
       } catch (error) {
         flowLog('send.error', error?.uncertain ? 'receipt-unconfirmed' : 'rejected');
         if (voice.owner === owner && voice.sessionGen === gen) {
           setScopedError('draft', error?.uncertain ? 'error.sendUnknown' : 'error.sendFailed');
-          voice.set({ sending: false, awaitingReply: false, phase: 'editing' });
+          voice.set({ sending: false, awaitingReply: false, phase: 'listening' });
+          updateInput(row, { status: 'failed', error: error?.uncertain ? '发送结果未确认，请先检查会话记录，勿重复发送' : '发送失败，请检查连接后手动重试' });
         }
-        return false; // drafts stay in this voice page; no automatic re-send
+        return false; // No automatic retry after an uncertain receipt.
+      } finally {
+        if (voice.owner === owner && voice.sessionGen === gen) void Promise.resolve().then(deliverInputs);
       }
     }
 
     function updateKeyboardDraft(text) {
-      cancelPendingSend('keyboard-edit');
       voice.set({ keyboardDraft: String(text).slice(0, 16000), keyboardRevision: voice.keyboardRevision + 1 });
     }
 
-    function setKeyboardOpen(open) {
-      cancelPendingSend('keyboard-mode');
-      voice.turnId++;
-      releaseRecorder();
-      voice.set({ keyboardOpen: open, requesting: false, phase: voice.sending || voice.awaitingReply || voice.modelRunning
-        ? 'thinking' : isSpeaking() ? 'speaking' : open || voice.transcriptDraft ? 'editing' : 'listening' });
-      if (!open) maybeListen();
-    }
-
-    function editTranscript() {
-      const text = voice.transcriptDraft;
-      setKeyboardOpen(true);
-      voice.set({ keyboardDraft: voice.keyboardDraft ? voice.keyboardDraft + '\n' + text : text, transcriptDraft: '', keyboardRevision: voice.keyboardRevision + 1, transcriptRevision: voice.transcriptRevision + 1 });
-    }
-
-    function discardTranscript() {
-      cancelPendingSend('discard-transcript');
-      voice.set({ transcriptDraft: '', transcriptRevision: voice.transcriptRevision + 1,
-        phase: isSpeaking() ? 'speaking' : voice.modelRunning || voice.awaitingReply || voice.sending ? 'thinking' : voice.keyboardOpen ? 'editing' : 'listening' });
-      clearScopedError('draft');
-      maybeListen();
-    }
-
-    function setPageVisible(visible) {
-      if (voice.pageVisible === visible) return;
-      if (!visible) cancelPendingSend('minimized');
-      voice.set({ pageVisible: visible });
-    }
-
-    function resumeListening() {
-      if (voice.phase === 'off' || !voice.owner || voice.sending || voice.modelRunning || voice.awaitingReply) return;
-      cancelPendingSend('resume-listening');
-      voice.set({ keyboardOpen: false, phase: 'listening' });
-      maybeListen();
-    }
+    function setKeyboardOpen(open) { voice.set({ keyboardOpen: open }); maybeListen(); }
+    function setPageVisible(visible) { if (voice.pageVisible !== visible) voice.set({ pageVisible: visible }); }
+    function resumeListening() { if (voice.phase !== 'off') { clearScopedError('mic'); maybeListen(); } }
 
     function firstScopedError(errors) {
       for (const scope of ['mic', 'asr', 'draft', 'synth']) {
@@ -563,7 +492,7 @@ window.__ModuleLoader__.load({
 
     /** Playback drained → resume listening when the loop is armed. */
     function afterSpeaking() {
-      if (voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : voice.keyboardOpen ? 'editing' : 'listening', speakingText: '' });
+      if (voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
       maybeListen();
     }
 
@@ -627,7 +556,7 @@ window.__ModuleLoader__.load({
         stopPlaybackLevel();
         if (gsvAudio) { const a = gsvAudio; gsvAudio = null; a.pause(); }
         if (item.onend) item.onend();
-        if (!isSpeaking() && voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : voice.keyboardOpen ? 'editing' : 'listening', speakingText: '' });
+        if (!isSpeaking() && voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
         void gsvPump();
       };
       try {
@@ -692,12 +621,6 @@ window.__ModuleLoader__.load({
     function speak(text, onend, onstart, options) {
       const body = speakable(text);
       if (!body) { if (onend) onend(); return; }
-      if (voice.phase !== 'off') {
-        cancelPendingSend('speech-output');
-        voice.turnId++;
-        releaseRecorder();
-        voice.set({ requesting: false });
-      }
       if (options && options.source === 'reply') {
         voice.lastReply = { id: options.id || null, text: body };
       }
@@ -812,8 +735,9 @@ window.__ModuleLoader__.load({
 
     function stopMicLevel() {
       micAnalyser = null;
-      cancelAnimationFrame(levelRaf);
-      if (voice.level !== 0) { voice.level = 0; for (const fn of [...levelListeners]) fn(); }
+      // PCM has no UI RAF. Do not cancel the separate playback meter when
+      // muting/replacing a microphone during an answer.
+      if (!isSpeaking() && voice.level !== 0) { voice.level = 0; for (const fn of [...levelListeners]) fn(); }
     }
 
     function getPlayCtx() {
@@ -909,20 +833,29 @@ window.__ModuleLoader__.load({
 
     /* ---------- recorder + VAD + Remote transcription ---------- */
 
-    const rec = { current: null };
-
+    const rec = { current: null, request: 0 };
     function disposeRecording(run) {
-      if (!run) return;
-      cancelAnimationFrame(run.raf);
-      if (rec.current === run) { rec.current = null; stopMicLevel(); }
-      for (const track of run.stream.getTracks()) track.stop();
-      if (run.recorder.state !== 'inactive') { try { run.recorder.stop(); } catch { /* already stopped */ } }
+      if (!run || run.disposed) return;
+      run.disposed = true; run.cancelled = true;
+      clearInterval(run.watchdog);
+      run.activeJob?.controller.abort();
+      for (const job of run.queue || []) job.controller.abort();
+      for (const row of voice.inputRows) {
+        if (row.owner === run.owner && row.gen === run.gen && row.status === 'recognizing') updateInput(row, { status: 'failed', error: '录音已中断，未发送，请重新说' });
+      }
+      run.queue = []; run.partial = null;
+      for (const track of run.stream.getTracks()) { track.onended = null; track.stop(); }
+      if (run.processor?.port) run.processor.port.onmessage = null;
+      if (run.processor) { run.processor.onaudioprocess = null; try { run.processor.disconnect(); } catch {} }
+      try { run.source?.disconnect(); run.sink?.disconnect(); } catch {}
       void run.audioCtx.close().catch(() => {});
+      if (rec.current === run) { rec.current = null; stopMicLevel(); }
     }
-
     function releaseRecorder() {
-      const run = rec.current;
-      if (run) { run.cancelled = true; disposeRecording(run); }
+      rec.request++;
+      disposeRecording(rec.current);
+      voice.requesting = false;
+      voice.captureState = 'off';
     }
 
     const yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -960,160 +893,262 @@ window.__ModuleLoader__.load({
       return !!voice.sessionId && voice.phase !== 'off' && voice.sessionGen === gen && voice.turnId === turn;
     }
 
-    function landTranscript(value, gen, turn) {
-      if (!voice.owner || voice.phase !== 'transcribing' || !isCurrentTurn(gen, turn)) return false;
-      const text = meaningfulTranscript(value);
-      if (!text) {
-        flowLog('asr.discarded', 'empty-or-symbols');
-        voice.set({ phase: 'listening' });
-        maybeListen();
-        return false;
-      }
-      // This belongs to voice UI only. Never set/insert/submit a chat composer draft.
-      const held = voice.transcriptDraft;
-      voice.set({ transcriptDraft: (held ? held + ' ' + text : text).slice(0, 16000), transcriptRevision: voice.transcriptRevision + 1, phase: 'editing' });
-      clearScopedError('draft');
-      if (!held && voice.pageVisible && !voice.keyboardOpen) beginPendingSend(voice.transcriptDraft);
-      flowLog('transcript.ready', 'chars=' + text.length + ' auto=' + voice.sendPending);
-      return true;
+    // Batch-only host speech API: incremental snapshots, not a fictitious
+    // streaming endpoint. One request in flight, final chunks take priority.
+    const ASR_PART_SAMPLES = 5 * 16000, ASR_OVERLAP = 4800, ASR_INTERVAL = 19200;
+    let inputId = 0;
+    function updateInput(row, patch) {
+      if (voice.owner !== row.owner || voice.sessionGen !== row.gen) return;
+      Object.assign(row, patch);
+      voice.set({ inputRows: [...voice.inputRows] });
     }
-
+    function joinRecognition(left, right) {
+      if (!left) return right;
+      if (!right) return left;
+      // Overlapping audio may repeat a boundary word. Only remove a boundary
+      // match of at least two significant characters; never global deduplication.
+      const chars = text => { const result = []; let i = 0; for (const c of text) { if (/[\p{L}\p{N}]/u.test(c)) result.push({ c, i }); i += c.length; } return result; };
+      const a = chars(left), b = chars(right);
+      for (let n = Math.min(a.length, b.length, 40); n >= 2; n--) {
+        if (a.slice(-n).map(x => x.c).join('') === b.slice(0,n).map(x => x.c).join('')) return left + right.slice(b[n-1].i + 1);
+      }
+      return left + (/^[\p{Script=Han}]/u.test(right) ? '' : ' ') + right;
+    }
+    function utteranceText(utterance) { return utterance.parts.reduce((text, part) => joinRecognition(text, part.text || ''), ''); }
+    function inputRow() {
+      const row = { id: 'live:' + (++inputId), owner: voice.owner, gen: voice.sessionGen, text: '', status: 'recognizing',
+        baseline: Math.max(-1, ...(voice.owner.lastNodes || []).map(n => Number(n.seq) || 0)), matchedSeq: null };
+      // Bound retained UI/audio metadata. Never discard an unfinished submission.
+      voice.set({ inputRows: [...voice.inputRows.slice(-63), row] });
+      return row;
+    }
+    async function deliverInputs() {
+      const owner = voice.owner, gen = voice.sessionGen;
+      if (!owner || owner.delivering) return;
+      owner.delivering = true;
+      try {
+        for (;;) {
+          if (voice.owner !== owner || voice.sessionGen !== gen) return;
+          const row = voice.inputRows.find(r => r.status === 'ready');
+          if (!row || voice.sending) return;
+          updateInput(row, { status: 'sending' }); // claim before await, exactly once
+          const ok = await dispatchMessage(row.text, 'asr', { interrupt: row.interrupt, row });
+          updateInput(row, { status: ok ? 'accepted' : 'failed' });
+        }
+      } finally { owner.delivering = false; }
+    }
+    function landTranscript(value, gen, turn) {
+      if (!voice.owner || !isCurrentTurn(gen, turn)) return false;
+      const text = meaningfulTranscript(value);
+      if (!text) return false;
+      const row = inputRow(); updateInput(row, { text, status: 'ready' }); void deliverInputs(); return true;
+    }
     function maybeListen() {
-      if (voice.phase !== 'listening' || voice.muted || voice.keyboardOpen || voice.requesting || rec.current) return;
-      if (voice.sending || voice.modelRunning || voice.awaitingReply || isSpeaking() || !voice.owner || !voice.ready) return;
-      if (typeof document !== 'undefined' && document.hidden) return;
+      if (voice.phase === 'off' || voice.muted || voice.requesting || rec.current || !voice.owner || !voice.ready) return;
       void startListening();
     }
-
-    /** Consecutive above-threshold time, never accumulated clicks across silent gaps. */
     function advanceVad(vad, rms, now) {
-      const dt = Math.min(100, Math.max(0, now - vad.lastT));
-      vad.lastT = now;
+      const dt = Math.min(100, Math.max(0, now - vad.lastT)); vad.lastT = now;
       if (rms > VAD_START_RMS) { vad.aboveMs += dt; vad.silenceStart = null; }
-      else {
-        vad.aboveMs = 0;
-        if (rms < VAD_STOP_RMS && vad.silenceStart === null) vad.silenceStart = now;
-        else if (rms >= VAD_STOP_RMS) vad.silenceStart = null;
-      }
+      else { vad.aboveMs = 0; if (rms < VAD_STOP_RMS) { if (vad.silenceStart === null) vad.silenceStart = now; } else vad.silenceStart = null; }
       if (vad.aboveMs >= VAD_START_MS) vad.started = true;
-      if (!vad.started && now - vad.t0 >= VAD_NOSPEECH_MS) return 'nospeech';
-      if (now - vad.t0 >= VAD_MAX_MS) return vad.started ? 'ok' : 'nospeech';
-      if (vad.started && vad.silenceStart !== null && now - vad.silenceStart >= VAD_STOP_MS) return 'ok';
+      if (vad.started && (now - vad.t0 >= VAD_MAX_MS || vad.silenceStart !== null && now - vad.silenceStart >= VAD_STOP_MS)) return 'ok';
       return null;
     }
-
+    function validCapture(run) { return rec.current === run && !run.cancelled && voice.owner === run.owner && voice.sessionGen === run.gen && voice.phase !== 'off' && !voice.muted; }
+    function enqueueRecognition(run, utterance, part, final) {
+      if (!validCapture(run) || part.failed) return;
+      const job = { utterance, part, final, samples: Float32Array.from(part.samples), controller: new AbortController() };
+      if (final) {
+        if (run.partial?.part === part) run.partial = null;
+        // Aborting a partial is safe: its result never submits anything.
+        if (run.activeJob && !run.activeJob.final) run.activeJob.controller.abort();
+        if (run.queue.length >= 12) { part.failed = true; updateInput(utterance.row, { status: 'failed', error: '识别积压，请稍后再说' }); return; }
+        run.queue.push(job);
+      } else if (!run.queue.length) run.partial = job; // latest partial wins
+      void pumpRecognition(run);
+    }
+    async function pumpRecognition(run) {
+      if (run.pumping) return;
+      run.pumping = true;
+      try {
+        while (validCapture(run)) {
+          const job = run.queue.shift() || run.partial;
+          if (!job) break;
+          if (run.partial === job) run.partial = null;
+          run.activeJob = job;
+          const valid = () => validCapture(run) && !job.controller.signal.aborted;
+          let timeout;
+          try {
+            const bytes = await encodeWave(job.samples, valid);
+            const audioBase64 = await uint8ToBase64(bytes, valid);
+            if (!valid()) continue;
+            timeout = setTimeout(() => job.controller.abort(), 12000);
+            const aborted = new Promise((_, reject) => job.controller.signal.addEventListener('abort', () => reject(new Error('asr-aborted')), { once: true }));
+            flowLog('asr.request', 'incremental=' + !job.final + ' samples=' + job.samples.length);
+            const started = performance.now();
+            const result = await Promise.race([speechNs().transcribe({ audioBase64, language: 'zh' }, job.controller.signal), aborted]);
+            if (!valid()) continue;
+            if (result?.ok === false) throw new Error('ASR rejected');
+            job.part.text = meaningfulTranscript(result?.value?.text || result?.text || '');
+            if (job.final) job.part.done = true;
+            clearScopedError('asr');
+            if (!job.utterance.row.text && job.part.text) flowLog('asr.first-text', 'id=' + job.utterance.row.id + ' ms=' + Math.round(performance.now() - job.utterance.row.startedAt));
+            updateInput(job.utterance.row, { text: utteranceText(job.utterance) });
+            flowLog('asr.result', 'final=' + job.final + ' ms=' + Math.round(performance.now() - started));
+            settleUtterance(job.utterance);
+          } catch (error) {
+            if (validCapture(run) && job.final) {
+              flowLog('asr.error', 'final=true aborted=' + job.controller.signal.aborted);
+              job.part.failed = true;
+              updateInput(job.utterance.row, { status: 'failed', error: '语音识别失败，请重新说；未发送' });
+              setScopedError('asr', 'error.asrFailed');
+            }
+          } finally {
+            clearTimeout(timeout); if (run.activeJob === job) run.activeJob = null;
+            if (job.final) job.part.samples = [];
+          }
+        }
+      } finally { run.pumping = false; }
+    }
+    function settleUtterance(utterance) {
+      if (!utterance.ended || utterance.parts.some(p => !p.done || p.failed)) return;
+      const text = meaningfulTranscript(utteranceText(utterance));
+      if (!text) { updateInput(utterance.row, { status: 'discarded', text: '' }); flowLog('asr.discarded', 'empty-or-symbols'); return; }
+      updateInput(utterance.row, { text, status: 'ready' }); void deliverInputs();
+    }
+    function finishListening(reason = 'ok', gen, turn, run = rec.current) {
+      if (!run || !validCapture(run) || !run.utterance) return;
+      const utterance = run.utterance; run.utterance = null;
+      utterance.ended = true;
+      flowLog('voice.endpoint', 'id=' + utterance.row.id + ' ms=' + Math.round(performance.now() - utterance.row.startedAt));
+      enqueueRecognition(run, utterance, utterance.parts.at(-1), true);
+      settleUtterance(utterance);
+      // Keep the stream running through recognition, model work and playback.
+      run.vad = null; run.preRoll = []; run.preCount = 0;
+    }
+    function processPcm(run, samples) {
+      if (!validCapture(run) || !samples?.length) return;
+      run.lastFrame = performance.now(); run.clock += samples.length / 16;
+      if (voice.captureState !== 'active') { clearScopedError('mic'); voice.set({ captureState: 'active' }); }
+      let sum = 0; for (const x of samples) sum += x*x;
+      const rms = Math.sqrt(sum / samples.length); publishLevel(Math.min(1, rms*6));
+      if (!run.vad) run.vad = { t0: run.clock, lastT: run.clock - samples.length/16, aboveMs: 0, silenceStart: null, started: false };
+      const wasStarted = run.vad.started, reason = advanceVad(run.vad, rms, run.clock);
+      if (!run.utterance) {
+        run.preRoll.push(samples); run.preCount += samples.length;
+        while (run.preCount > 6400 && run.preRoll.length > 1) run.preCount -= run.preRoll.shift().length;
+        if (!run.vad.started) { if (!rms || rms < VAD_STOP_RMS) run.vad.t0 = run.clock; return; }
+        if (voice.inputRows.filter(r => ['recognizing','ready','sending'].includes(r.status)).length >= 8) {
+          setScopedError('asr', 'error.asrBacklog'); run.vad = null; run.preRoll = []; run.preCount = 0; return;
+        }
+        const interrupt = isSpeaking() || voice.modelRunning || voice.awaitingReply;
+        const row = inputRow(); row.interrupt = interrupt; row.startedAt = performance.now();
+        flowLog('voice.input-start', 'id=' + row.id + ' barge=' + interrupt);
+        run.utterance = { row, ended: false, parts: [{ samples: [], text: '', done: false }], nextPartial: ASR_INTERVAL };
+        for (const frame of run.preRoll) for (const x of frame) run.utterance.parts[0].samples.push(x);
+        run.preRoll = []; run.preCount = 0; run.vad.t0 = run.clock;
+        if (interrupt) { voice.readBlocked = true; stopSpeaking(); flowLog('voice.barge-in'); }
+      } else {
+        const part = run.utterance.parts.at(-1); for (const x of samples) part.samples.push(x);
+      }
+      const utterance = run.utterance, part = utterance.parts.at(-1);
+      if (reason && wasStarted) { finishListening('ok', undefined, undefined, run); return; }
+      if (part.samples.length >= ASR_PART_SAMPLES) {
+        enqueueRecognition(run, utterance, part, true);
+        utterance.parts.push({ samples: part.samples.slice(-ASR_OVERLAP), text: '', done: false });
+        utterance.nextPartial = ASR_INTERVAL;
+      } else if (part.samples.length >= utterance.nextPartial) {
+        utterance.nextPartial = part.samples.length + ASR_INTERVAL;
+        enqueueRecognition(run, utterance, part, false);
+      }
+    }
+    const CAPTURE_WORKLET = `
+      class VoicePcm extends AudioWorkletProcessor {
+        constructor() { super(); this.buf=new Float32Array(1600); this.pos=0; this.phase=0; this.sum=0; this.n=0; }
+        process(inputs) {
+          const input=inputs[0]?.[0]; if (!input) return true;
+          for (const x of input) { this.sum+=x; this.n++; this.phase+=16000;
+            if (this.phase>=sampleRate) { this.phase-=sampleRate; this.buf[this.pos++]=this.sum/this.n; this.sum=0; this.n=0;
+              if (this.pos===1600) { this.port.postMessage(this.buf,[this.buf.buffer]); this.buf=new Float32Array(1600); this.pos=0; }
+            }
+          } return true;
+        }
+      } registerProcessor('dsh-voice-pcm', VoicePcm);`;
     async function startListening() {
-      if (voice.requesting || rec.current || !voice.owner || voice.phase !== 'listening') return;
-      if (!speechNs()) { setScopedError('asr', 'error.noAsr'); voice.set({ phase: 'error' }); return; }
-      if (!REC_OK) { setScopedError('mic', 'error.micDenied'); voice.set({ phase: 'error' }); return; }
-      const gen = voice.sessionGen, turn = voice.turnId + 1;
-      voice.set({ requesting: true, turnId: turn });
-      const prefs = loadPrefs();
+      if (voice.requesting || rec.current || !voice.owner || voice.phase === 'off' || voice.muted) return;
+      if (!speechNs()) { setScopedError('asr', 'error.noAsr'); voice.set({ captureState: 'error' }); return; }
+      if (!REC_OK) { setScopedError('mic', 'error.micDenied'); voice.set({ captureState: 'error' }); return; }
+      const gen = voice.sessionGen, owner = voice.owner, request = ++rec.request;
+      const current = () => gen === voice.sessionGen && owner === voice.owner && request === rec.request && voice.phase !== 'off' && !voice.muted;
+      voice.set({ requesting: true, captureState: 'starting' });
       let stream, audioCtx, run;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: {
-          echoCancellation: true, noiseSuppression: true,
-          ...(prefs.deviceId ? { deviceId: { exact: prefs.deviceId } } : {}),
-        } });
-        if (!isCurrentTurn(gen, turn) || voice.phase !== 'listening' || voice.muted || voice.keyboardOpen) {
-          for (const track of stream.getTracks()) track.stop();
-          return;
-        }
-        audioCtx = new AudioContext();
+        const prefs = loadPrefs();
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+          ...(prefs.deviceId ? { deviceId: { exact: prefs.deviceId } } : {}) } });
+        if (!current()) { for (const track of stream.getTracks()) track.stop(); return; }
+        audioCtx = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' });
         if (audioCtx.state === 'suspended') await audioCtx.resume();
-        if (!isCurrentTurn(gen, turn)) { for (const track of stream.getTracks()) track.stop(); void audioCtx.close().catch(() => {}); return; }
-        const analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
-        audioCtx.createMediaStreamSource(stream).connect(analyser);
-        const recorder = new MediaRecorder(stream);
-        const t0 = performance.now();
-        run = { stream, audioCtx, recorder, chunks: [], raf: 0, cancelled: false, finishing: false,
-          vad: { t0, lastT: t0, aboveMs: 0, silenceStart: null, started: false } };
+        run = { stream, audioCtx, gen, owner, cancelled: false, queue: [], partial: null, clock: 0, preRoll: [], preCount: 0, lastFrame: performance.now() };
+        run.source = audioCtx.createMediaStreamSource(stream); run.sink = audioCtx.createGain(); run.sink.gain.value = 0;
+        if (audioCtx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+          const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET], { type: 'text/javascript' }));
+          try { await audioCtx.audioWorklet.addModule(url); run.processor = new AudioWorkletNode(audioCtx, 'dsh-voice-pcm'); }
+          catch { /* Older host/CSP: the fallback is explicitly diagnosed below. */ }
+          finally { URL.revokeObjectURL(url); }
+        }
+        if (!current()) { disposeRecording(run); return; }
+        if (run.processor) run.processor.port.onmessage = event => processPcm(run, event.data);
+        else {
+          if (!audioCtx.createScriptProcessor || audioCtx.sampleRate !== 16000) throw new Error('continuous PCM capture unavailable');
+          run.processor = audioCtx.createScriptProcessor(2048, 1, 1);
+          let buffered = [];
+          run.processor.onaudioprocess = event => {
+            buffered.push(...event.inputBuffer.getChannelData(0));
+            while (buffered.length >= 1600) processPcm(run, Float32Array.from(buffered.splice(0,1600)));
+          };
+          flowLog('mic.degraded', 'ScriptProcessor fallback; background reliability requires runtime verification');
+        }
         rec.current = run;
-        micAnalyser = analyser;
-        const data = new Float32Array(analyser.fftSize);
-        recorder.ondataavailable = (event) => { if (!run.cancelled && event.data?.size) run.chunks.push(event.data); };
-        const tick = () => {
-          if (rec.current !== run || run.cancelled || run.finishing || voice.phase !== 'listening' || !isCurrentTurn(gen, turn)) return;
-          analyser.getFloatTimeDomainData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-          const rms = Math.sqrt(sum / data.length);
-          publishLevel(Math.min(1, rms * 6)); // one analyser pass, one RAF; no second visual sampling loop
-          const reason = advanceVad(run.vad, rms, performance.now());
-          if (reason) { void finishListening(reason, gen, turn, run); return; }
-          run.raf = requestAnimationFrame(tick);
+        run.source.connect(run.processor); run.processor.connect(run.sink); run.sink.connect(audioCtx.destination);
+        for (const track of stream.getTracks()) track.onended = () => {
+          if (validCapture(run)) recoverCapture(run);
         };
-        recorder.start(250);
-        run.raf = requestAnimationFrame(tick);
-        clearScopedError('mic');
-        flowLog('mic.listening');
+        run.watchdog = setInterval(() => checkCapture(run), 1000);
+        clearScopedError('mic'); flowLog('mic.connected', run.processor.port ? 'AudioWorklet' : 'ScriptProcessor');
       } catch (error) {
         if (run) disposeRecording(run);
         else { if (stream) for (const track of stream.getTracks()) track.stop(); if (audioCtx) void audioCtx.close().catch(() => {}); }
-        if (isCurrentTurn(gen, turn)) { setScopedError('mic', 'error.micDenied'); voice.set({ phase: 'error' }); }
+        if (current()) { setScopedError('mic', 'error.micDenied'); voice.set({ captureState: 'error' }); }
         flowLog('mic.error', String(error?.name || 'setup-failed'));
-      } finally {
-        // An old permission response must never clear a newer session's request flag.
-        if (isCurrentTurn(gen, turn)) voice.set({ requesting: false });
+      } finally { if (current()) voice.set({ requesting: false }); }
+    }
+    function checkCapture(run = rec.current) {
+      if (!run || !validCapture(run)) return;
+      if (performance.now() - run.lastFrame > 2500) {
+        if (voice.captureState !== 'recovering') { voice.set({ captureState: 'recovering' }); flowLog('mic.stalled', run.audioCtx.state); }
+        if (run.audioCtx.state === 'suspended') void run.audioCtx.resume().catch(() => {});
+        if (performance.now() - run.lastFrame > 5000) {
+          recoverCapture(run);
+        }
       }
     }
 
-    async function finishListening(reason, gen = voice.sessionGen, turn = voice.turnId, run = rec.current) {
-      if (!run || run.finishing || run.cancelled || rec.current !== run || !isCurrentTurn(gen, turn)) return;
-      run.finishing = true;
-      cancelAnimationFrame(run.raf);
-      const valid = () => !run.cancelled && isCurrentTurn(gen, turn);
-      voice.set({ phase: reason === 'nospeech' ? 'listening' : 'transcribing' });
-      let stopTimer;
-      try {
-        const blob = await new Promise((resolve, reject) => {
-          const stopped = () => resolve(new Blob(run.chunks, { type: run.recorder.mimeType }));
-          run.recorder.onstop = stopped;
-          stopTimer = setTimeout(() => reject(new Error('recorder stop timeout')), 3000);
-          if (run.recorder.state === 'inactive') stopped(); else run.recorder.stop();
-        });
-        clearTimeout(stopTimer);
-        // Stop only this recording's tracks, not whichever run is current after the await.
-        if (rec.current === run) { rec.current = null; stopMicLevel(); }
-        for (const track of run.stream.getTracks()) track.stop();
-        if (!valid()) return;
-        if (reason === 'nospeech' || !blob.size) { voice.set({ phase: 'listening' }); return; }
-        const decoded = await run.audioCtx.decodeAudioData(await blob.arrayBuffer());
-        if (!valid()) return;
-        const frames = Math.max(1, Math.floor(Math.min(decoded.duration, VAD_MAX_MS / 1000 + 1) * 16000));
-        const offline = new OfflineAudioContext(1, frames, 16000), source = offline.createBufferSource();
-        source.buffer = decoded; source.connect(offline.destination); source.start();
-        const rendered = await offline.startRendering();
-        if (!valid()) return;
-        const wav = await encodeWave(rendered.getChannelData(0), valid);
-        const audioBase64 = await uint8ToBase64(wav, valid);
-        if (!valid()) return;
-        flowLog('asr.request', 'bytes=' + wav.length);
-        const startedAt = performance.now();
-        const result = await withDeadline(speechNs().transcribe({ audioBase64, language: 'zh' }), 30_000);
-        if (!valid() || voice.phase !== 'transcribing') return;
-        if (result?.ok === false) throw new Error('recognition request rejected');
-        clearScopedError('asr');
-        const text = String(result?.value?.text || result?.text || '');
-        flowLog('asr.result', 'ms=' + Math.round(performance.now() - startedAt) + ' chars=' + text.length);
-        landTranscript(text, gen, turn);
-      } catch (error) {
-        if (valid()) { setScopedError('asr', 'error.asrFailed'); voice.set({ phase: 'listening' }); }
-        flowLog('asr.error', String(error?.name || 'failed'));
-      } finally {
-        clearTimeout(stopTimer);
-        disposeRecording(run);
-        run.chunks.length = 0;
-        if (valid()) maybeListen();
-      }
+    function recoverCapture(run) {
+      const owner = run.owner, now = performance.now();
+      if (!owner.recoveryAt || now - owner.recoveryAt > 30000) { owner.recoveryAt = now; owner.recoveryCount = 0; }
+      disposeRecording(run);
+      if ((owner.recoveryCount = (owner.recoveryCount || 0) + 1) <= 3) { voice.set({ captureState: 'recovering' }); maybeListen(); }
+      else { setScopedError('mic', 'error.micStalled'); voice.set({ captureState: 'error' }); }
     }
 
     /* ---------- session-level operations ---------- */
 
     function saveSessionView() {
       if (!voice.sessionId) return;
-      sessionViews.set(voice.sessionId, { keyboardDraft: voice.keyboardDraft, transcriptDraft: voice.transcriptDraft,
-        keyboardOpen: voice.keyboardOpen, muted: voice.muted, keyboardRevision: voice.keyboardRevision, transcriptRevision: voice.transcriptRevision });
+      sessionViews.set(voice.sessionId, { keyboardDraft: voice.keyboardDraft,
+        keyboardOpen: voice.keyboardOpen, muted: voice.muted, keyboardRevision: voice.keyboardRevision });
     }
 
     function releaseSession() {
@@ -1126,6 +1161,7 @@ window.__ModuleLoader__.load({
 
     function createOwner(args) {
       const { sessionId, useChat, useSessions, useSession } = args;
+      const ownerGen = voice.sessionGen;
       if (!sessionId) throw new Error('session identity required');
       let retained = null;
       if (svc.sessions && typeof svc.sessions.retain === 'function') {
@@ -1133,20 +1169,22 @@ window.__ModuleLoader__.load({
         lease = retained;
       }
       return { sessionId, useChat, useSessions, useSession, lastNodes: null, lastPartial: null, seenReplies: null,
-        async send(text) {
-          if (typeof args.send === 'function' && globalThis.__VC_TEST__ === true) return args.send(text, sessionId);
+        async send(text, mode = 'queue') {
+          if (typeof args.send === 'function' && globalThis.__VC_TEST__ === true) return args.send(text, sessionId, mode);
           if (retained) {
             const binding = await retained.ready;
-            if (binding.sessionId !== sessionId) throw new Error('session binding changed');
-            assertReceipt(await binding.session.prompt([{ type: 'text', text }], 'queue'));
+            if (binding.sessionId !== sessionId || voice.sessionGen !== ownerGen || voice.phase === 'off') throw new Error('session binding changed');
+            const submission = binding.session.beginSubmission?.({ mode, text, attachments: [] });
+            try { assertReceipt(await binding.session.prompt([{ type: 'text', text }], mode, undefined, submission?.requestId)); }
+            catch (error) { submission?.abandon(); throw error; }
             return;
           }
-          if (svc.sessions && typeof svc.sessions.scope === 'function') {
+          if (mode === 'queue' && svc.sessions && typeof svc.sessions.scope === 'function') {
             const scope = svc.sessions.scope(sessionId);
             if (scope?.conversation && typeof scope.conversation.send === 'function') { await scope.conversation.send(text); return; }
           }
           if (svc.remoteSession && typeof svc.remoteSession.prompt === 'function') {
-            assertReceipt(await svc.remoteSession.prompt({ sessionId, requestId: crypto.randomUUID(), mode: 'queue',
+            assertReceipt(await svc.remoteSession.prompt({ sessionId, requestId: crypto.randomUUID(), mode,
               content: [{ type: 'text', text }], clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
             return;
           }
@@ -1168,15 +1206,15 @@ window.__ModuleLoader__.load({
       try { owner = createOwner(args); } catch { setScopedError('draft', 'error.sessionUnavailable'); return false; }
       voice.owner = owner;
       voice.set({ phase: 'connecting', ready: false, sessionId: args.sessionId, messages: [], subtitles: [],
-        keyboardDraft: saved.keyboardDraft || '', transcriptDraft: saved.transcriptDraft || '', keyboardRevision: saved.keyboardRevision || 0, transcriptRevision: saved.transcriptRevision || 0, keyboardOpen: !!saved.keyboardOpen,
+        keyboardDraft: saved.keyboardDraft || '', keyboardRevision: saved.keyboardRevision || 0, keyboardOpen: !!saved.keyboardOpen,
         muted: !!saved.muted, captionsOn: loadPrefs().captions !== false, speakingText: '', spokenId: null, lastReply: null,
-        sending: false, awaitingReply: false, modelRunning: false, runObserved: false,
-        sendPending: false, sendConsumed: true, startedAt: Date.now(), requesting: false });
+        sending: false, awaitingReply: false, modelRunning: false, runObserved: false, inputRows: [], captureState: 'off', readBlocked: false, readAfterSeq: -1,
+        startedAt: Date.now(), requesting: false });
       openVoicePage();
       try {
         await owner.ready;
         if (voice.sessionGen !== gen || voice.owner !== owner) return false;
-        voice.set({ ready: true, phase: voice.keyboardOpen || voice.transcriptDraft ? 'editing' : 'listening' });
+        voice.set({ ready: true, phase: 'listening' });
         maybeListen();
         flowLog('voice.start', 'engine=' + engineInfo(loadPrefs().voiceURI).id);
         return true;
@@ -1188,7 +1226,6 @@ window.__ModuleLoader__.load({
 
     function endVoice(options = {}) {
       saveSessionView();
-      cancelPendingSend('session-end');
       voice.sessionGen++; voice.turnId++;
       // Disarm listening first; cleanup callbacks cannot restart it.
       voice.set({ phase: 'off', ready: false, requesting: false, sending: false, awaitingReply: false, modelRunning: false });
@@ -1196,7 +1233,7 @@ window.__ModuleLoader__.load({
       if (playCtx) { void playCtx.close().catch(() => {}); playCtx = null; }
       voice.owner = null;
       resetScopedErrors();
-      voice.set({ sessionId: null, messages: [], subtitles: [], transcriptDraft: '', keyboardDraft: '', keyboardOpen: false,
+      voice.set({ sessionId: null, messages: [], subtitles: [], inputRows: [], keyboardDraft: '', keyboardOpen: false,
         settingsOpen: false, pageVisible: false, speakingText: '', lastReply: null });
       if (!options.switching) closeVoicePage();
       flowLog('voice.end');
@@ -1207,22 +1244,22 @@ window.__ModuleLoader__.load({
       voice.turnId++;
       releaseRecorder();
       voice.set({ muted, requesting: false, phase: isSpeaking() ? 'speaking' : voice.sending || voice.awaitingReply || voice.modelRunning
-        ? 'thinking' : voice.keyboardOpen || voice.transcriptDraft ? 'editing' : 'listening' });
+        ? 'thinking' : 'listening' });
       clearScopedError('mic');
       if (!muted) maybeListen();
     }
 
     function stopAnswer() {
       stopSpeaking();
-      voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : voice.keyboardOpen ? 'editing' : 'listening' });
+      voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening' });
       maybeListen();
     }
 
     function retryMic() {
       if (voice.phase === 'off' || !voice.owner) return;
       clearScopedError('mic'); clearScopedError('asr');
-      if (voice.keyboardOpen) { voice.set({ phase: 'editing' }); return; }
-      voice.set({ phase: 'listening' }); maybeListen();
+      releaseRecorder();
+      voice.set({ phase: isSpeaking() ? 'speaking' : 'listening' }); maybeListen();
     }
 
     function retrySpeaking() {
@@ -1268,6 +1305,14 @@ window.__ModuleLoader__.load({
       const nodes = chatNodes(chat), partial = chat?.legacy?.partial || chat?.partial || null;
       if (owner.lastNodes === nodes && owner.lastPartial === partial) return;
       owner.lastNodes = nodes; owner.lastPartial = partial;
+      // Match each optimistic speech row to exactly one native user record.
+      const used = new Set(voice.inputRows.filter(r => r.matchedSeq !== null).map(r => r.matchedSeq));
+      for (const row of voice.inputRows) {
+        if (row.matchedSeq !== null || !['sending','accepted','failed'].includes(row.status)) continue;
+        const node = nodes.find(n => (n.kind === 'user' || n.kind === 'steering') && n.seq > row.baseline && !used.has(n.seq)
+          && (n.content || []).filter(b => b.type === 'text').map(b => b.text || '').join('\n').trim() === row.text);
+        if (node) { row.matchedSeq = node.seq; used.add(node.seq); voice.readBlocked = false; voice.readAfterSeq = node.seq; }
+      }
       const messages = projectMessages(chat);
       if (messages.length !== voice.messages.length || messages.some((m, i) => m.id !== voice.messages[i]?.id || m.text !== voice.messages[i]?.text || m.streaming !== voice.messages[i]?.streaming)) voice.set({ messages });
       if (owner.seenReplies === null) {
@@ -1280,7 +1325,7 @@ window.__ModuleLoader__.load({
         if (node.kind !== 'assistant' || !node.messageId) continue;
         if (owner.seenReplies.has(node.messageId)) break;
         owner.seenReplies.add(node.messageId);
-        if (!node.interrupted && assistantBody(node)) fresh.unshift(node);
+        if (!voice.readBlocked && (node.seq == null || node.seq > voice.readAfterSeq) && !node.interrupted && assistantBody(node)) fresh.unshift(node);
       }
       if (fresh.length && !owner.useSession) voice.set({ awaitingReply: false });
       for (const node of fresh) {
@@ -1294,13 +1339,12 @@ window.__ModuleLoader__.load({
     function acceptRunning(running, owner = voice.owner, gen = voice.sessionGen) {
       if (voice.owner !== owner || voice.sessionGen !== gen) return;
       if (running) {
-        voice.turnId++; releaseRecorder();
-        voice.set({ requesting: false, phase: isSpeaking() ? 'speaking' : 'thinking' });
+        voice.set({ phase: isSpeaking() ? 'speaking' : 'thinking' });
       }
       const observed = voice.runObserved || running;
       const done = !running && observed;
       voice.set({ modelRunning: !!running, runObserved: observed, ...(done ? { awaitingReply: false } : {}) });
-      if (done && !isSpeaking() && !voice.sending) { voice.set({ phase: voice.keyboardOpen || voice.transcriptDraft ? 'editing' : 'listening' }); maybeListen(); }
+      if (done && !isSpeaking() && !voice.sending) { voice.set({ phase: 'listening' }); maybeListen(); }
     }
 
     /* ---------- styles ---------- */
@@ -1337,6 +1381,8 @@ window.__ModuleLoader__.load({
 .dsh-vc-capline { display:flex; flex-direction:column; align-items:flex-start; margin:12px 0 26px; line-height:1.85; font-size:15px; overflow-wrap:anywhere; }
 .dsh-vc-capline[data-who="you"] { align-items:flex-end; }
 .dsh-vc-capwho { font-size:11px; color:var(--dsw-alias-label-secondary); margin-bottom:6px; }
+.dsh-vc-input-status { display:block; font-size:11px; opacity:.65; margin-top:4px; }
+.dsh-vc-usertext[data-live] { border:1px solid color-mix(in srgb,var(--vc-accent) 30%,transparent); }
 .dsh-vc-usertext { max-width:85%; padding:11px 17px; border-radius:18px 18px 5px 18px; background:var(--vc-soft); white-space:pre-wrap; }
 .dsh-vc-response { width:100%; min-width:0; }
 .dsh-vc-markdown p { margin:.5em 0 .9em; white-space:pre-wrap; }
@@ -1352,14 +1398,13 @@ window.__ModuleLoader__.load({
 .dsh-vc-hidden-captions { display:grid; place-items:center; color:var(--dsw-alias-label-secondary); }
 .dsh-vc-backlatest { position:sticky; display:block; bottom:0; margin:0 auto; border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-overlay); border-radius:20px; padding:7px 14px; color:var(--dsw-alias-label-primary); font-size:12px; box-shadow:0 2px 12px #00000008; }
 .dsh-vc-dock { width:min(100%,960px); margin:0 auto; padding:8px 32px 16px; flex:none; }
-.dsh-vc-composer, .dsh-vc-transcript-review { border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-1); border-radius:18px; padding:13px 16px; margin-bottom:12px; box-shadow:0 4px 20px #00000004; }
+.dsh-vc-composer { border:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-1); border-radius:18px; padding:13px 16px; margin-bottom:12px; box-shadow:0 4px 20px #00000004; }
 .dsh-vc-composer:focus-within { border-color:color-mix(in srgb,var(--vc-accent) 55%,transparent); }
 .dsh-vc-review-label { display:block; font-size:11px; color:var(--dsw-alias-label-secondary); line-height:1.5; }
 .dsh-vc-composer textarea { display:block; width:100%; min-height:58px; max-height:160px; margin:8px 0; padding:0; resize:vertical; border:0; outline:none; background:transparent; color:inherit; line-height:1.6; font-size:14px; }
 .dsh-vc-composer-bottom { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .dsh-vc-composer-bottom small { color:var(--dsw-alias-label-secondary); font-size:11px; }
 .dsh-vc-send { background:var(--vc-accent); border:0; border-radius:10px; padding:7px 18px; color:white; font-size:12px!important; flex:none; }
-.dsh-vc-transcript-review p { margin:8px 0 12px; max-height:90px; overflow-y:auto; white-space:pre-wrap; font-size:14px; line-height:1.6; }
 .dsh-vc-review-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; align-items:center; gap:8px; }
 .dsh-vc-controls { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; }
 .dsh-vc-ctl { display:inline-flex; align-items:center; gap:7px; border:1px solid var(--dsw-alias-border-l1); border-radius:12px; background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-secondary); font-size:12px!important; min-height:42px; padding:6px 13px; }
@@ -1454,23 +1499,22 @@ window.__ModuleLoader__.load({
     }
 
     function stateText(t) {
-      if (voice.keyboardOpen && !voice.sending && !voice.modelRunning && !voice.awaitingReply && !isSpeaking()) return t('keyboard.title');
       if (voice.error) return t(voice.error);
+      if (voice.phase !== 'off' && !voice.muted && voice.captureState !== 'active') return voice.captureState === 'recovering' ? t('state.micRecovering') : voice.captureState === 'error' ? t('error.micDenied') : t('state.micStarting');
       switch (voice.phase) {
         case 'connecting': return t('state.connecting');
         case 'listening': return voice.muted ? t('state.muted') : (voice.requesting ? t('state.requesting') : t('state.listening'));
         case 'transcribing': return t('state.transcribing');
         case 'thinking': return t('state.thinking');
         case 'speaking': return t('state.speaking');
-        case 'editing': return t('state.editing');
         case 'error': return t('state.error');
         default: return t('state.off');
       }
     }
 
     function hintText(t) {
+      if (voice.phase === 'speaking') return t('page.hint.speaking');
       if (voice.phase === 'listening') return voice.muted ? t('page.hint.muted') : t('page.hint.listening');
-      if (voice.phase === 'editing') return t('page.hint.editing');
       return t('page.hint.default');
     }
 
@@ -1493,7 +1537,7 @@ window.__ModuleLoader__.load({
         if (voice.phase !== 'thinking' || voice.sending) return undefined;
         const timer = setTimeout(() => {
           if (voice.owner !== owner || voice.sessionGen !== gen || voice.phase !== 'thinking' || voice.modelRunning || voice.sending || isSpeaking()) return;
-          voice.set({ awaitingReply: false, phase: voice.keyboardOpen || voice.transcriptDraft ? 'editing' : 'listening' });
+          voice.set({ awaitingReply: false, phase: 'listening' });
           flowLog('reply.watchdog', 'no-running-turn');
           maybeListen();
         }, 25_000);
@@ -1501,8 +1545,6 @@ window.__ModuleLoader__.load({
       }, [owner, gen, voice.phase, voice.sending]);
       return null;
     }
-
-    function cancelPendingSendFromUi() { cancelPendingSend('user-cancel'); }
 
     function VoiceStartButton(props) {
       useVoice();
@@ -1538,24 +1580,17 @@ window.__ModuleLoader__.load({
       if (!mine) return null;
       if (voicePageShowing) return null; // the full page is showing; no duplicate bar
 
-      const statusText = voice.transcriptDraft ? t('send.review') : stateText(t);
+      const live = voice.inputRows.findLast(row => row.matchedSeq === null && !['discarded','failed'].includes(row.status));
+      const statusText = live?.text || stateText(t);
       return h(React.Fragment, null,
         h('style', null, STYLES),
         h('div', { className: 'dsh-vc-minibar' },
           h('span', {
             className: 'dsh-vc-livedot',
-            'data-live': (voice.phase === 'listening' && !voice.muted) || undefined,
+            'data-live': (voice.captureState === 'active' && !voice.muted) || undefined,
             'data-speaking': voice.phase === 'speaking' || undefined,
           }),
           h('span', { className: 'dsh-vc-state' }, statusText),
-          voice.sendPending ? h('button', {
-            type: 'button', 'data-danger': true,
-            onClick: cancelPendingSendFromUi,
-          }, `${t('send.pending')} · ${t('action.cancelSend')}`) : null,
-          voice.phase === 'editing' ? h('button', {
-            type: 'button',
-            onClick: resumeListening,
-          }, t('action.resumeListening')) : null,
           h('button', {
             type: 'button', 'aria-label': t('action.expand'), title: t('action.expand'),
             onClick: () => openVoicePage(),
@@ -1589,7 +1624,7 @@ window.__ModuleLoader__.load({
       }, []);
       const chooseVoice = (e) => setPrefs(savePrefs({ voiceURI: e.target.value }));
       const chooseRate = (e) => setPrefs(savePrefs({ rate: Number(e.target.value) }));
-      const chooseDevice = (e) => setPrefs(savePrefs({ deviceId: e.target.value || undefined }));
+      const chooseDevice = (e) => { setPrefs(savePrefs({ deviceId: e.target.value || undefined })); releaseRecorder(); maybeListen(); };
       const preview = () => speak(t('settings.sample'), null);
       const sortedVoices = [...voices].sort((a, b) =>
         (/^zh/i.test(b.lang) ? 1 : 0) - (/^zh/i.test(a.lang) ? 1 : 0));
@@ -1672,29 +1707,31 @@ window.__ModuleLoader__.load({
     function VoiceOrb() {
       useVoice();
       const level = useVoiceLevel();
-      return h('div', { className: 'dsh-vc-orb', 'aria-hidden': true, 'data-muted': voice.muted || voice.keyboardOpen || undefined,
+      return h('div', { className: 'dsh-vc-orb', 'aria-hidden': true, 'data-muted': voice.muted || undefined,
         'data-off': voice.phase === 'off' || voice.phase === 'error' || undefined, style: { '--dsh-vc-level': level } }, h(WaveIcon));
     }
 
     function CaptionsList({ t }) {
-      const items = useSubtitles();
+      const history = useSubtitles(); useVoice();
+      const live = voice.inputRows.filter(row => row.matchedSeq === null && row.status !== 'discarded');
+      const items = [...(voice.captionsOn ? history : []), ...live.map(row => ({ id: row.id, who: 'you', text: row.text || t('input.placeholder'), status: row.status, error: row.error }))];
       const boxRef = useRef(null), [stick, setStick] = useState(true);
       const labels = useMemo(() => t('page.title') === zh['page.title'] ? MD_ZH : MD_EN, [t]);
       useEffect(() => { const box = boxRef.current; if (box && stick) box.scrollTop = box.scrollHeight; }, [items, stick]);
       return h('div', { className: 'dsh-vc-captions', ref: boxRef, role: 'region', 'aria-label': t('action.captions'),
         onScroll: () => { const box = boxRef.current; if (box) setStick(box.scrollHeight - box.scrollTop - box.clientHeight < 48); } },
         h('div', { className: 'dsh-vc-transcript' },
-          !items.length ? h('div', { className: 'dsh-vc-capempty' }, h(WaveIcon), h('p', null, t('captions.empty')), h('small', null, t('page.context'))) : null,
+          !items.length ? h('div', { className: 'dsh-vc-capempty' }, h(WaveIcon), h('p', null, t(voice.captionsOn ? 'captions.empty' : 'captions.hidden')), h('small', null, t('page.context'))) : null,
           items.map(item => h('article', { key: item.id, className: 'dsh-vc-capline', 'data-who': item.who },
             h('div', { className: 'dsh-vc-capwho' }, item.who === 'you' ? t('captions.you') : t('captions.assistant')),
-            item.who === 'you' ? h('div', { className: 'dsh-vc-usertext' }, item.text)
+            item.who === 'you' ? h('div', { className: 'dsh-vc-usertext', 'data-live': item.status === 'recognizing' || undefined }, item.text, item.status && item.status !== 'accepted' ? h('small', { className: 'dsh-vc-input-status', role: 'status' }, item.status === 'failed' ? item.error || t('input.unconfirmed') : item.status === 'recognizing' ? t('input.recognizing') : t('input.sending')) : null)
               : h('div', { className: 'dsh-vc-response' }, HostMarkdown
                 ? h(HostMarkdown, { text: item.text, streaming: !!item.streaming, labels }) : h(SafeMarkdown, { text: item.text })),
           ))),
         stick ? null : h('button', { type: 'button', className: 'dsh-vc-backlatest', onClick: () => setStick(true) }, t('captions.backToLatest')));
     }
 
-    function canSubmit() { return voice.pageVisible && voice.ready && !voice.sending && !voice.awaitingReply && !voice.modelRunning; }
+    function canSubmit() { return voice.pageVisible && voice.ready && !voice.sending; }
     function keyboardKeyDown(event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !event.nativeEvent?.isComposing && event.keyCode !== 229) {
         event.preventDefault();
@@ -1744,21 +1781,13 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'dsh-vc-retry', onClick: () => { void startVoice(props); } }, t('start.here'))) : null,
         h('section', { className: 'dsh-vc-stage' }, h(VoiceOrb),
           h('div', { className: 'dsh-vc-state-copy' }, h('div', { className: 'dsh-vc-state', role: 'status' }, stateText(t)),
-            h('div', { className: 'dsh-vc-hint' }, voice.keyboardOpen ? t('keyboard.hint') : hintText(t))),
+            h('div', { className: 'dsh-vc-hint' }, hintText(t))),
           h('div', { className: 'dsh-vc-stage-actions' },
-            voice.phase === 'error' ? h('button', { type: 'button', className: 'dsh-vc-retry', onClick: retryMic }, t('action.retry')) : null,
+            voice.captureState === 'error' || voice.captureState === 'recovering' ? h('button', { type: 'button', className: 'dsh-vc-retry', onClick: retryMic }, t('action.retry')) : null,
             voice.errors.synth ? h('button', { type: 'button', className: 'dsh-vc-retry', onClick: retrySpeaking }, t('action.retrySpeak')) : null,
             voice.phase === 'speaking' ? h('button', { type: 'button', className: 'dsh-vc-stopanswer', onClick: stopAnswer }, t('action.stopSpeaking')) : null)),
-        voice.captionsOn ? h(CaptionsList, { t }) : h('div', { className: 'dsh-vc-captions dsh-vc-hidden-captions' }, t('captions.hidden')),
+        h(CaptionsList, { t }),
         h('footer', { className: 'dsh-vc-dock' },
-          voice.transcriptDraft ? h('div', { className: 'dsh-vc-transcript-review' },
-            h('div', { className: 'dsh-vc-review-label' }, voice.sendPending ? t('send.pending') : t('send.review')),
-            h('p', null, voice.transcriptDraft),
-            h('div', { className: 'dsh-vc-review-actions' },
-              voice.sendPending ? h('button', { type: 'button', className: 'dsh-vc-stopanswer', onClick: cancelPendingSendFromUi }, t('action.cancelSend')) : null,
-              h('button', { type: 'button', className: 'dsh-vc-stopanswer', disabled: voice.sending, onClick: discardTranscript }, t('action.clear')),
-              h('button', { type: 'button', className: 'dsh-vc-stopanswer', disabled: voice.sending, onClick: editTranscript }, t('action.edit')),
-              h('button', { type: 'button', className: 'dsh-vc-send', disabled: !canSubmit(), onClick: () => { void dispatchMessage(voice.transcriptDraft, 'asr'); } }, t('action.send')))) : null,
           voice.keyboardOpen ? h('form', { className: 'dsh-vc-composer', onSubmit: event => { event.preventDefault(); if (canSubmit()) void dispatchMessage(voice.keyboardDraft, 'keyboard'); } },
             h('label', { className: 'dsh-vc-review-label', htmlFor: 'dsh-vc-keyboard' }, t('keyboard.title')),
             h('textarea', { id: 'dsh-vc-keyboard', 'aria-label': t('keyboard.title'), placeholder: t('keyboard.placeholder'),
@@ -1847,10 +1876,10 @@ window.__ModuleLoader__.load({
     // load. Production exposes nothing: diagnostics go through the flow log
     // and the client-error reporter, never a writable global state object.
     const testApi = globalThis.__VC_TEST__ === true ? {
-      voice, rec, svc, sessionViews, splitSentences, dictionary: zh, VoiceEffects, VoiceMiniBar, VoiceStartButton, meaningfulTranscript, beginPendingSend, cancelPendingSend, submitPendingSend,
-      dispatchMessage, updateKeyboardDraft, setKeyboardOpen, editTranscript, discardTranscript, setPageVisible, keyboardKeyDown,
+      voice, rec, svc, sessionViews, splitSentences, dictionary: zh, VoiceEffects, VoiceMiniBar, VoiceStartButton, meaningfulTranscript,
+      dispatchMessage, updateKeyboardDraft, setKeyboardOpen, setPageVisible, keyboardKeyDown,
       resumeListening, isCurrentTurn, landTranscript, advanceVad, startListening, finishListening, releaseRecorder,
-      encodeWave, uint8ToBase64, acceptChatSnapshot, acceptRunning, projectMessages,
+      processPcm, checkCapture, joinRecognition, deliverInputs, inputRow, updateInput, pumpRecognition, encodeWave, uint8ToBase64, acceptChatSnapshot, acceptRunning, projectMessages,
       setScopedError, clearScopedError, retryMic, retrySpeaking, stopSpeaking, isSpeaking, engineInfo,
       endVoice, startVoice, publishLevel, SafeMarkdown, CaptionsList, VoicePageGuarded,
       setOwner(owner) { voice.owner = owner; },
@@ -1878,7 +1907,7 @@ window.__ModuleLoader__.load({
         ctx.inject(['remote.session'], scope => { svc.remoteSession = scope.remote.session; });
         // Nested Remote namespaces must be injected by their dotted path on a scope.
         try {
-          ctx.inject(['remote.speech'], (scope) => { svc.speech = scope.remote.speech; });
+          ctx.inject(['remote.speech'], (scope) => { svc.speech = scope.remote.speech; maybeListen(); });
         } catch { svc.speech = null; }
 
         ctx.effect(() => {
@@ -1911,8 +1940,8 @@ window.__ModuleLoader__.load({
         }, VoicePageGuarded));
 
         // The auto-send/auto-read effects live in one always-mounted root entry:
-        // mounting them inside the voice page AND the minibar double-fired the
-        // send timer and the read-aloud pass whenever both views were alive.
+        // mounting them inside both views would duplicate reply observation.
+        // PCM capture and recognition are module-owned, outside React.
         ctx.slots.inject('shell.overlay', () => ctx.slots.register({
           name: 'shell.overlay', id: 'voice-effects', order: 90,
         }, VoiceEffects));

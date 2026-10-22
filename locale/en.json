@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Voice Conversation",
-    "description": "Hands-free voice chat on top of voice input: auto-sends the transcript, reads replies aloud with cloud Edge TTS or local system voices, and adds a read-aloud action to every assistant message."
+    "description": "Continuous listening with incremental transcription, direct submission after a pause, and spoken interruption within the current conversation."
   }
 }

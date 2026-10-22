@@ -5,68 +5,66 @@ import { loadClient, ready, deferred, flush, recordingMocks } from './client-har
 const assistant = (id, text) => ({ kind: 'assistant', messageId: id, time: 1, blocks: [{ kind: 'text', text }] });
 const chat = (nodes, partial = null) => ({ legacy: { nodes, partial } });
 
-test('ASR transcript is private to voice UI and never reads or writes the normal composer', async () => {
+test('ASR sends directly to its bound session without reading or changing the normal composer', async () => {
   const h = loadClient(), sent = [];
-  await h.api.startVoice({ sessionId: 's1', inputActions: new Proxy({}, { get: () => assert.fail('normal composer touched') }), getDraft: () => assert.fail('draft read'), send: text => sent.push(text) });
-  h.voice.set({ phase: 'transcribing', muted: true });
+  await h.api.startVoice({ sessionId: 's1', inputActions: new Proxy({}, { get: () => assert.fail('composer touched') }), getDraft: () => assert.fail('draft read'), send: text => sent.push(text) });
+  h.api.updateKeyboardDraft('你好');
   assert.equal(h.api.landTranscript('你好', h.voice.sessionGen, h.voice.turnId), true);
-  assert.equal(h.voice.transcriptDraft, '你好');
-  assert.equal(h.voice.sendPending, true);
-  assert.equal(await h.api.submitPendingSend(h.voice.sendId), true);
-  assert.deepEqual(sent, ['你好']); h.dispose();
+  await flush(); assert.deepEqual(sent, ['你好']); assert.equal(h.voice.keyboardDraft, '你好');
+  assert.equal(h.voice.inputRows[0].text, '你好'); assert.equal(h.voice.inputRows[0].status, 'accepted'); h.dispose();
 });
-test('a claimed voice send submits once even if its old timer fires again', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.landTranscript('开灯', 1, 1); const id = h.voice.sendId;
-  assert.equal(await h.api.submitPendingSend(id), true);
-  assert.equal(await h.api.submitPendingSend(id), false);
+
+test('a claimed voice row submits once even when delivery is pumped repeatedly', async () => {
+  const h = loadClient(), gate = deferred(), sent = []; ready(h, 's1', text => { sent.push(text); return gate.promise; });
+  h.api.landTranscript('开灯', 1, 1); h.api.deliverInputs(); h.api.deliverInputs();
+  assert.deepEqual(sent, ['开灯']); gate.resolve(); await flush(); await h.api.deliverInputs();
   assert.deepEqual(sent, ['开灯']); h.dispose();
 });
-test('the actual 1.5s timer submits only a voice-origin transcript', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.landTranscript('打开灯带', 1, 1);
-  await h.fire(1500); assert.deepEqual(sent, ['打开灯带']); h.dispose();
+
+test('direct speech submission schedules no 1.5 second countdown', async () => {
+  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text)); h.api.landTranscript('打开灯带', 1, 1);
+  assert.deepEqual(sent, ['打开灯带']); assert.equal([...h.timers.values()].some(timer => timer.ms === 1500), false); h.dispose();
 });
-test('keyboard edits never arm auto-send or touch a held voice transcript', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.updateKeyboardDraft('现在几点'); await h.fire(1500);
-  assert.equal(h.voice.sendPending, false); assert.deepEqual(sent, []); h.dispose();
+
+test('keyboard typing remains manual, including while speech is active', async () => {
+  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text)); h.api.setKeyboardOpen(true);
+  h.api.updateKeyboardDraft('现在几点'); await h.fire(1500); assert.deepEqual(sent, []); h.dispose();
 });
-test('minimizing cancels the countdown and retains the transcript', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.landTranscript('请稍等', 1, 1); const id = h.voice.sendId;
-  h.api.setPageVisible(false); await h.fire(1500);
-  assert.equal(await h.api.submitPendingSend(id), false);
-  assert.equal(h.voice.transcriptDraft, '请稍等'); assert.deepEqual(sent, []); h.dispose();
+
+test('minimizing does not cancel a voice submission', async () => {
+  const h = loadClient(), gate = deferred(), sent = []; ready(h, 's1', text => { sent.push(text); return gate.promise; });
+  h.api.landTranscript('请稍等', 1, 1); h.api.setPageVisible(false); gate.resolve(); await flush();
+  assert.deepEqual(sent, ['请稍等']); assert.equal(h.voice.inputRows[0].status, 'accepted'); h.dispose();
 });
-test('a transcript arriving while minimized does not send, including after expand', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.setPageVisible(false); h.api.landTranscript('新转写', 1, 1);
-  h.api.setPageVisible(true); await h.fire(1500);
-  assert.equal(h.voice.sendPending, false); assert.deepEqual(sent, []);
-  assert.equal(await h.api.dispatchMessage(h.voice.transcriptDraft, 'asr'), true); h.dispose();
+
+test('a transcript arriving while minimized sends once without waiting for expand', async () => {
+  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text)); h.api.setPageVisible(false);
+  h.api.landTranscript('新转写', 1, 1); await flush(); h.api.setPageVisible(true); await flush();
+  assert.deepEqual(sent, ['新转写']); h.dispose();
 });
-test('opening keyboard cancels auto-send and invalidates an in-flight recognition turn', () => {
-  const h = loadClient(); ready(h); const gen = h.voice.sessionGen, turn = h.voice.turnId;
-  h.voice.set({ requesting: true }); h.api.setKeyboardOpen(true);
-  assert.equal(h.voice.requesting, false);
-  assert.equal(h.api.landTranscript('旧识别', gen, turn), false); h.dispose();
+
+test('opening keyboard keeps permission and recognition ownership intact', async () => {
+  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text)); const gen = h.voice.sessionGen, turn = h.voice.turnId;
+  h.voice.set({ requesting: true }); h.api.setKeyboardOpen(true); assert.equal(h.voice.requesting, true);
+  assert.equal(h.api.landTranscript('同时说话', gen, turn), true); await flush(); assert.deepEqual(sent, ['同时说话']); h.dispose();
 });
-test('editing a transcript moves it into manual keyboard input without auto-send', () => {
-  const h = loadClient(); ready(h); h.api.landTranscript('我要修改', 1, 1); h.api.editTranscript();
-  assert.equal(h.voice.keyboardOpen, true); assert.equal(h.voice.keyboardDraft, '我要修改');
-  assert.equal(h.voice.transcriptDraft, ''); assert.equal(h.voice.sendPending, false); h.dispose();
+
+test('keyboard draft is independent from the live voice row', async () => {
+  const h = loadClient(); ready(h); h.api.updateKeyboardDraft('键盘草稿'); h.api.landTranscript('语音输入', 1, 1);
+  await flush(); assert.equal(h.voice.keyboardDraft, '键盘草稿'); assert.equal(h.voice.inputRows[0].text, '语音输入'); h.dispose();
 });
-test('cancelled transcript is preserved if listening resumes with another phrase', () => {
-  const h = loadClient(); ready(h); h.api.landTranscript('保留这句', 1, 1); h.api.cancelPendingSend();
-  h.voice.set({ phase: 'transcribing', turnId: 2 }); h.api.landTranscript('加一句', 1, 2);
-  assert.equal(h.voice.transcriptDraft, '保留这句 加一句'); assert.equal(h.voice.sendPending, false); h.dispose();
+
+test('a voice row ready during a keyboard receipt is delivered after the receipt', async () => {
+  const h = loadClient(), gate = deferred(), sent = []; ready(h, 's1', text => { sent.push(text); return sent.length === 1 ? gate.promise : Promise.resolve(); });
+  const sending = h.api.dispatchMessage('键盘'); h.api.landTranscript('下一句', 1, h.voice.turnId);
+  assert.deepEqual(sent, ['键盘']); gate.resolve(); await sending; await flush(); assert.deepEqual(sent, ['键盘', '下一句']); h.dispose();
 });
+
 test('symbol-only, zero-width and empty recognition results do not trigger a model turn', () => {
   const h = loadClient(); ready(h);
   for (const value of ['', '。', '…？！', '\u200B。\uFEFF', '🎵', '<|zh|><|NEUTRAL|>。']) {
     h.voice.set({ phase: 'transcribing' }); assert.equal(h.api.landTranscript(value, 1, 1), false);
-    assert.equal(h.voice.sendPending, false); assert.equal(h.voice.transcriptDraft, '');
+    assert.equal(h.voice.inputRows.length, 0);
   }
   for (const value of ['好', '对', '不', '1', 'OK']) assert.equal(h.api.meaningfulTranscript(value), value);
   h.dispose();
@@ -75,7 +73,7 @@ test('late results from an ended session or older turn cannot write', () => {
   const h = loadClient(); ready(h); h.voice.set({ sessionGen: 2, turnId: 5 });
   assert.equal(h.api.landTranscript('旧会话', 1, 5), false);
   assert.equal(h.api.landTranscript('旧轮次', 2, 4), false);
-  assert.equal(h.voice.transcriptDraft, ''); h.dispose();
+  assert.equal(h.voice.inputRows.length, 0); h.dispose();
 });
 test('VAD requires consecutive speech rather than adding isolated clicks', () => {
   const h = loadClient(), v = { t0: 0, lastT: 0, aboveMs: 0, silenceStart: null, started: false };
@@ -161,11 +159,12 @@ test('streaming text renders but is not spoken as a finalized reply', () => {
   h.api.acceptChatSnapshot(chat([], { turn: 1, step: 1, blocks: [{ kind: 'text', text: '**逐步**出现' }] }));
   assert.equal(h.voice.messages[0].streaming, true); assert.deepEqual(spoken, []); h.dispose();
 });
-test('model/tool work prevents overlapping sends and keeps waiting until that native run ends', async () => {
-  const h = loadClient(); ready(h); h.api.acceptRunning(true);
-  assert.equal(await h.api.dispatchMessage('不要插入重复请求'), false);
-  h.api.acceptRunning(false); assert.equal(h.voice.awaitingReply, false); h.dispose();
+test('new speech interrupts native model work with steer, never a late separate cancel', async () => {
+  const h = loadClient(), requests = []; h.api.svc.remoteSession = { prompt: async value => { requests.push(value); return { ok: true }; } };
+  await h.api.startVoice({ sessionId: 'a' }); h.api.acceptRunning(true); await h.api.dispatchMessage('改一下', 'asr');
+  assert.equal(requests[0].mode, 'steer'); assert.equal(requests[0].sessionId, 'a'); h.dispose();
 });
+
 test('volume notifications do not invalidate the general voice observable', () => {
   const h = loadClient(); let updates = 0; h.voice.subscribe(() => updates++);
   const version = h.voice.version;
@@ -178,17 +177,14 @@ test('errors recover by scope and synthesis retry does not resubmit the question
   assert.equal(h.voice.errors.asr, 'error.asrFailed'); h.voice.lastReply = { id: 'm', text: '已有回复' };
   assert.equal(h.api.retrySpeaking(), true); assert.deepEqual(spoken, ['已有回复']); h.dispose();
 });
-test('old recorder stop and data events cannot stop or contaminate the new recording', async () => {
+test('old PCM callbacks cannot stop or contaminate a new session capture', async () => {
   const mocks = recordingMocks(), h = loadClient({ globals: mocks }); h.api.svc.speech = { transcribe: async () => ({ text: 'unused' }) };
-  await h.api.startVoice({ sessionId: 'a', send: async () => {} }); await flush();
-  const old = h.api.rec.current;
-  const finishing = h.api.finishListening('nospeech', h.voice.sessionGen, h.voice.turnId, old);
-  await h.api.startVoice({ sessionId: 'b', send: async () => {} }); await flush();
-  const current = h.api.rec.current;
-  assert.ok(current && current !== old);
-  old.recorder.ondataavailable({ data: new Blob(['old audio']) }); old.recorder.onstop(); await finishing;
-  assert.equal(h.api.rec.current, current); assert.equal(current.stream.track.stopped, 0); assert.equal(current.chunks.length, 0); h.dispose();
+  await h.api.startVoice({ sessionId: 'a', send: async () => {} }); await flush(); const old = h.api.rec.current;
+  await h.api.startVoice({ sessionId: 'b', send: async () => {} }); await flush(); const current = h.api.rec.current;
+  assert.ok(current && current !== old); h.api.processPcm(old, new Float32Array(1600).fill(.1));
+  assert.equal(h.voice.inputRows.length, 0); assert.equal(current.stream.track.stopped, 0); assert.ok(old.stream.track.stopped > 0); h.dispose();
 });
+
 test('late microphone permission results cannot clear a new session’s permission request', async () => {
   const a = deferred(), b = deferred(); let count = 0;
   const mocks = recordingMocks(() => ++count === 1 ? a.promise : b.promise), h = loadClient({ globals: mocks }); h.api.svc.speech = {};
@@ -226,17 +222,14 @@ test('late synthesis from A cannot start playing or release B’s playback pump'
   assert.equal(played.length, 1); assert.equal(h.api.isSpeaking(), true);
   h.api.stopSpeaking(); assert.equal(h.api.isSpeaking(), false); assert.ok(revoked.includes('blob:1')); h.dispose();
 });
-test('playback and native model work pause recording and invalidate old recognition turns', async () => {
+test('playback, model work, keyboard, hidden document and minimizing keep the same capture alive', async () => {
   const mocks = recordingMocks(), h = loadClient({ globals: mocks }); h.api.svc.speech = {};
-  await h.api.startVoice({ sessionId: 'a', send: async () => {} }); await flush();
-  const first = h.api.rec.current, oldTurn = h.voice.turnId;
-  h.sandbox.__vc.speak('正在朗读。'); await flush();
-  assert.equal(h.api.rec.current, null); assert.ok(first.stream.track.stopped > 0);
-  assert.equal(h.api.landTranscript('回声', h.voice.sessionGen, oldTurn), false);
-  h.api.stopSpeaking(); h.voice.set({ phase: 'listening' }); await h.api.startListening();
-  const second = h.api.rec.current; h.api.acceptRunning(true);
-  assert.equal(h.api.rec.current, null); assert.ok(second.stream.track.stopped > 0); assert.equal(h.voice.phase, 'thinking'); h.dispose();
+  await h.api.startVoice({ sessionId: 'a', send: async () => {} }); await flush(); const first = h.api.rec.current;
+  h.sandbox.__vc.speak('正在朗读。'); await flush(); h.api.acceptRunning(true); h.api.setKeyboardOpen(true);
+  h.sandbox.document.hidden = true; h.api.setPageVisible(false); h.voice.set({ settingsOpen: true, captionsOn: false });
+  assert.equal(h.api.rec.current, first); assert.equal(first.stream.track.stopped, 0); h.dispose(); assert.equal(first.stream.track.stopped, 1);
 });
+
 test('scoped conversation fallback keeps the destination explicit', async () => {
   const h = loadClient(), sends = [];
   h.api.svc.sessions = { scope: id => ({ conversation: { send: async text => sends.push([id, text]) } }) };
@@ -257,11 +250,10 @@ test('legacy clone preference migrates to Edge without warming a removed local e
   h.dispose();
 });
 
-test('discarding a transcript cancels its timer without changing the keyboard draft', async () => {
-  const h = loadClient(), sent = []; ready(h, 's1', text => sent.push(text));
-  h.api.updateKeyboardDraft('保留键盘草稿'); h.api.landTranscript('丢弃识别', 1, 1);
-  h.api.discardTranscript(); await h.fire(1500);
-  assert.equal(h.voice.transcriptDraft, ''); assert.equal(h.voice.keyboardDraft, '保留键盘草稿'); assert.deepEqual(sent, []); h.dispose();
+test('normal punctuation remains intact while leading noise and repeated marks are cleaned', () => {
+  const h = loadClient();
+  for (const [before, after] of [['。你好，在吗？','你好，在吗？'], ['！？，开灯。。','开灯。'], ['温度 -3.5 度，电量 3.14。','温度 -3.5 度，电量 3.14。'], ['.5','.5'], ['“好”','“好”']]) assert.equal(h.api.meaningfulTranscript(before), after);
+  h.dispose();
 });
 
 test('a long unpunctuated reply is bounded into synthesis chunks without losing text', () => {

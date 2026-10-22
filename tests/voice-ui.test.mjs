@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { loadClient, flush } from './client-harness.mjs';
+import { loadClient, flush, recordingMocks } from './client-harness.mjs';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const textOf = node => !node ? '' : typeof node === 'string' ? node : (node.children || []).map(textOf).join(' ');
@@ -69,10 +69,10 @@ test('switching sessions remounts owner hooks and exposes no old draft or messag
   assert.ok(!textOf(h.view.toJSON()).includes('语音界面出错了')); assert.ok(!textOf(h.view.toJSON()).includes('A 的未发送文字'));
   await h.cleanup();
 });
-test('a busy model disables send but allows preparing the next keyboard draft', async () => {
+test('keyboard can explicitly interrupt a busy model', async () => {
   const h = await mounted(); await act(async () => { button(h.view, '键盘').props.onClick(); h.api.acceptRunning(true); });
   await act(async () => h.view.root.findByType('textarea').props.onChange({ target: { value: '下一个问题' } }));
-  assert.equal(h.view.root.findAllByType('button').find(node => node.props.type === 'submit').props.disabled, true);
+  assert.equal(h.view.root.findAllByType('button').find(node => node.props.type === 'submit').props.disabled, false);
   assert.equal(h.voice.keyboardDraft, '下一个问题'); await h.cleanup();
 });
 test('settings do not offer the removed GPT-SoVITS engine or hardcode the recognition provider', async () => {
@@ -96,4 +96,29 @@ test('minimizing or unmounting the voice view does not stop an active spoken rep
   await act(async () => { button(h.view, '返回聊天').props.onClick(); h.view.unmount(); });
   assert.equal(h.voice.pageVisible, false); assert.equal(h.api.isSpeaking(), true);
   h.dispose();
+});
+
+
+test('partial speech updates a single conversation bubble with no confirmation card or countdown', async () => {
+  const h = await mounted(); let row;
+  await act(async () => { row = h.api.inputRow(); h.api.updateInput(row, { text: '打开' }); });
+  assert.ok(textOf(h.view.toJSON()).includes('打开'));
+  const before = h.view.root.findAll(node => node.props?.className === 'dsh-vc-usertext').length;
+  await act(async () => h.api.updateInput(row, { text: '打开灯带' }));
+  assert.equal(h.view.root.findAll(node => node.props?.className === 'dsh-vc-usertext').length, before);
+  assert.equal(h.view.root.findAll(node => node.props?.className === 'dsh-vc-transcript-review').length, 0);
+  assert.ok(!textOf(h.view.toJSON()).includes('1.5 秒'));
+  await act(async () => button(h.view, '对话记录').props.onClick());
+  assert.ok(textOf(h.view.toJSON()).includes('打开灯带')); await h.cleanup();
+});
+
+test('voice view controls and unmount do not dispose continuous capture', async () => {
+  const h = await mounted({ globals: recordingMocks() });
+  // Speech injection can arrive after the page. Retry starts session-owned capture.
+  await act(async () => { h.api.svc.speech = {}; h.api.retryMic(); await flush(); });
+  const run = h.api.rec.current; assert.ok(run);
+  await act(async () => { button(h.view, '键盘').props.onClick(); button(h.view, '语音设置').props.onClick(); await flush(); });
+  await act(async () => { button(h.view, '返回聊天').props.onClick(); h.view.unmount(); });
+  assert.equal(h.api.rec.current, run); assert.equal(run.stream.track.stopped, 0);
+  h.dispose(); assert.equal(run.stream.track.stopped, 1);
 });
