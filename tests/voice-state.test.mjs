@@ -154,7 +154,7 @@ test('opening a session displays history without replaying it; new replies play 
   const snapshot = chat([old, first, second]); h.api.acceptChatSnapshot(snapshot); h.api.acceptChatSnapshot(snapshot);
   assert.deepEqual(spoken, ['第一步', '第二步']); h.dispose();
 });
-test('streaming text renders but is not spoken as a finalized reply', () => {
+test('an already-visible partial renders without historical read-aloud on open', () => {
   const spoken = [], h = loadClient({ hooks: { speak: text => spoken.push(text) } }); ready(h);
   h.api.acceptChatSnapshot(chat([], { turn: 1, step: 1, blocks: [{ kind: 'text', text: '**逐步**出现' }] }));
   assert.equal(h.voice.messages[0].streaming, true); assert.deepEqual(spoken, []); h.dispose();

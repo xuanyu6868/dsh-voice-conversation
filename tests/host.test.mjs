@@ -15,9 +15,16 @@ async function host(rejection) {
     timer: { interval: () => () => {}, timeout: (...args) => typeof args[0] === 'function' ? () => {} : Promise.resolve() },
   };
   apply(ctx, { home });
-  const request = (path, payload) => new Promise((resolve, reject) => {
+  const request = (path, payload, options = {}) => new Promise((resolve, reject) => {
     const req = Object.assign(new EventEmitter(), { method: 'POST', url: path, destroy() {} });
-    const headers = {}, res = { statusCode: 200, setHeader: (k, v) => { headers[k] = v; }, end: body => resolve({ status: res.statusCode, headers, body }) };
+    const headers = {}, chunks = [];
+    const res = Object.assign(new EventEmitter(), { statusCode: 200, headersSent: false, writableEnded: false, destroyed: false,
+      setHeader(k,v) { headers[k] = v; }, flushHeaders() { this.headersSent = true; },
+      write(value) { this.headersSent = true; chunks.push(Buffer.from(value)); options.onChunk?.(value, res); return !options.backpressure; },
+      end(body) { this.headersSent = true; this.writableEnded = true; resolve({ status: this.statusCode, headers, body: chunks.length ? Buffer.concat(chunks) : body, destroyed: this.destroyed }); },
+      destroy() { this.destroyed = true; this.emit('close'); resolve({ status: this.statusCode, headers, body: Buffer.concat(chunks), destroyed: true }); },
+    });
+    options.onResponse?.(res);
     Promise.resolve(routes.get(path).handler(req, res)).catch(reject);
     queueMicrotask(() => { req.emit('data', Buffer.from(JSON.stringify(payload))); req.emit('end'); });
   });
@@ -38,10 +45,54 @@ test('host keeps the existing authentication gate for both speech routes', async
 });
 test('default Edge engine returns MP3 content type without starting a local clone model', async () => {
   const h = await host(), original = globalThis.fetch, calls = [];
-  globalThis.fetch = async (url) => { calls.push(url); return { ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }; };
+  globalThis.fetch = async (url) => { calls.push(url); return { ok: true, headers: new Headers(), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }; };
   try {
     const res = await h.request('/voice-tts/tts', { text: '测试', stream: false });
     assert.equal(res.status, 200); assert.equal(res.headers['content-type'], 'audio/mpeg');
     assert.deepEqual([...res.body], [1, 2, 3]); assert.ok(calls.every(url => url.startsWith('http://127.0.0.1:9884')));
   } finally { globalThis.fetch = original; await h.dispose(); }
+});
+
+
+test('Edge proxy forwards its first MPEG bytes before upstream completes', async () => {
+  const h = await host(), original = globalThis.fetch;
+  let controller, firstResolve, response;
+  const first = new Promise(resolve => { firstResolve = resolve; });
+  globalThis.fetch = async url => url.endsWith('/speak') ? new Response(new ReadableStream({ start(c) { controller=c; c.enqueue(new Uint8Array([1,2])); } }), { headers: { 'x-edge-stream': '1', 'x-edge-first-chunk-ms': '123' } }) : new Response('ok');
+  try {
+    const pending = h.request('/voice-tts/tts', { text: '流式测试', engine: 'edge', stream: true }, { onChunk: () => firstResolve(), onResponse: r => { response=r; } });
+    await first; assert.equal(response.writableEnded, false); controller.enqueue(new Uint8Array([3,4])); controller.close();
+    const result = await pending; assert.deepEqual([...result.body], [1,2,3,4]); assert.equal(result.headers['x-voice-stream'], 'mp3');
+  } finally { globalThis.fetch = original; await h.dispose(); }
+});
+
+test('Edge proxy cancels the upstream reader when the downstream disconnects', async () => {
+  const h = await host(), original = globalThis.fetch; let cancelled = false, signal;
+  globalThis.fetch = async (url, init) => {
+    if (!url.endsWith('/speak')) return new Response('ok'); signal = init.signal;
+    return new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1])); }, cancel() { cancelled=true; } }), { headers: { 'x-edge-stream': '1' } });
+  };
+  try {
+    const result = await h.request('/voice-tts/tts', { text:'取消', engine:'edge', stream:true }, { onChunk: (_,res) => res.destroy() });
+    await new Promise(resolve => setImmediate(resolve)); assert.equal(result.destroyed,true); assert.equal(signal.aborted,true); assert.equal(cancelled,true);
+  } finally { globalThis.fetch=original; await h.dispose(); }
+});
+
+test('Edge backpressure pauses forwarding until drain and survives disconnect during drain', async () => {
+  const h=await host(), original=globalThis.fetch; let chunks=0, response, firstResolve;
+  const first = new Promise(resolve=>{firstResolve=resolve;});
+  globalThis.fetch=async url=>url.endsWith('/speak') ? new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1])); c.enqueue(new Uint8Array([2])); c.close(); } }),{headers:{'x-edge-stream':'1'}}) : new Response('ok');
+  try {
+    const pending=h.request('/voice-tts/tts',{text:'背压',engine:'edge',stream:true},{backpressure:true,onResponse:r=>{response=r;},onChunk:()=>{chunks++;firstResolve();}});
+    await first;await new Promise(resolve=>setImmediate(resolve));assert.equal(chunks,1);response.emit('drain');
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(chunks,2);response.destroy();assert.equal((await pending).destroyed,true);
+  } finally {globalThis.fetch=original;await h.dispose();}
+});
+
+test('an upstream error after audio headers closes transport rather than appending JSON to MP3',async()=>{
+ const h=await host(),original=globalThis.fetch;let controller;
+ globalThis.fetch=async url=>url.endsWith('/speak')?new Response(new ReadableStream({start(c){controller=c;c.enqueue(new Uint8Array([1,2]));}}),{headers:{'x-edge-stream':'1'}}):new Response('ok');
+ try {const result=await h.request('/voice-tts/tts',{text:'错误',engine:'edge',stream:true},{onChunk:()=>controller.error(new Error('upstream lost'))});
+ assert.equal(result.destroyed,true);assert.equal(result.headers['content-type'],'audio/mpeg');assert.deepEqual([...result.body],[1,2]);
+ }finally{globalThis.fetch=original;await h.dispose();}
 });

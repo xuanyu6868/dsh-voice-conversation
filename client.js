@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     const NS = 'voice-conversation';
-    const PLUGIN_VERSION = '2.1.0';
+    const PLUGIN_VERSION = '2.2.0';
     const zh = {
       'start.begin': '开始语音对话',
       'start.return': '返回语音',
@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
       'state.listening': '正在聆听',
       'state.transcribing': '正在识别…',
       'state.thinking': '正在思考…',
-      'state.speaking': '正在回答',
+      'state.speaking': '正在回答', 'state.preparing': '正在准备语音…',
       'state.muted': '麦克风已静音',
       'state.error': '连接失败',
       'state.off': '语音未开启',
@@ -104,7 +104,7 @@ window.__ModuleLoader__.load({
       'state.listening': 'Listening',
       'state.transcribing': 'Transcribing…',
       'state.thinking': 'Thinking…',
-      'state.speaking': 'Answering',
+      'state.speaking': 'Answering', 'state.preparing': 'Preparing voice…',
       'state.muted': 'Microphone muted',
       'state.error': 'Connection failed',
       'state.off': 'Voice off',
@@ -259,7 +259,7 @@ window.__ModuleLoader__.load({
 
     function speakable(text) {
       return text
-        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/```[\s\S]*?```/g, ' ').replace(/```[\s\S]*$/g, ' ')
         .replace(/`([^`]*)`/g, '$1')
         .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
         .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -276,20 +276,80 @@ window.__ModuleLoader__.load({
         .slice(0, MAX_SPEAK_CHARS);
     }
 
-    function splitSentences(text) {
-      const parts = text.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [text];
-      const chunks = [];
-      let buf = '';
-      for (const part of parts) {
-        const chars = Array.from(part);
-        for (let offset = 0; offset < chars.length; offset += 120) {
-          const fragment = chars.slice(offset, offset + 120).join('');
-          if (buf.length + fragment.length > 120 && buf) { chunks.push(buf); buf = ''; }
-          buf += fragment;
+    // Consume only complete, speakable boundaries. The raw prefix is retained
+    // for reconciliation, so final snapshots never replay an emitted sentence.
+    function sentencePrefix(text, final = false) {
+      let end = 0, fence = false, inline = false, bracket = 0, paren = 0;
+      const boundaries = [];
+      for (let i = 0; i < text.length; i++) {
+        if (text.startsWith('```', i)) { fence = !fence; i += 2; if (!fence) { end = i + 1; boundaries.push(end); } continue; }
+        if (fence) continue;
+        const c = text[i];
+        if (c === '`') { inline = !inline; continue; }
+        if (inline) continue;
+        if (c === '[') bracket++;
+        if (c === ']') bracket = Math.max(0, bracket - 1);
+        if (c === '(' && (paren || text[i-1] === ']')) paren++;
+        if (c === ')' && paren) paren--;
+        if (bracket || paren) continue;
+        const period = c === '.' && !/\d/.test(text[i-1] || '') && (i+1 < text.length && /\s/.test(text[i+1]) || final && i === text.length-1);
+        if (/[。！？!?；;\n]/.test(c) || period) {
+          let n = i+1;
+          while (n < text.length && /[。！？!?；;”’」』）)*_~]/.test(text[n])) n++;
+          // A closing Markdown marker may arrive in the next delta.
+          const candidate = text.slice(end,n);
+          if ((candidate.match(/\*\*/g) || []).length % 2 || (candidate.match(/__/g) || []).length % 2) continue;
+          end = n; boundaries.push(end); i = n-1;
         }
       }
-      if (buf.trim()) chunks.push(buf);
-      return chunks.map(c => c.trim()).filter(Boolean);
+      if (final) boundaries.push(text.length);
+      let start = 0;
+      const chunks = [];
+      for (const boundary of boundaries) {
+        if (boundary <= start) continue;
+        const raw = text.slice(start, boundary), body = speakable(raw);
+        if (body) { for (const chunk of Array.from(body).reduce((a,c) => { if (!a.length || a[a.length-1].length >= 120) a.push(''); a[a.length-1] += c; return a; }, [])) if (chunk.trim()) chunks.push(chunk.trim()); }
+        start = boundary;
+      }
+      return { chunks, consumed: start };
+    }
+    function splitSentences(text) { return sentencePrefix(text, true).chunks; }
+
+    function replyKey(node, final = false) {
+      if (Number.isFinite(node?.turn) && Number.isFinite(node?.step)) return node.turn + ':' + node.step;
+      return final && node?.messageId ? 'message:' + node.messageId : null;
+    }
+    function observeReply(node, final, owner) {
+      if (!node || node.interrupted || voice.readBlocked) return;
+      const key = replyKey(node, final);
+      if (!key) return; // Legacy partials without identity use final-only playback.
+      owner.replyStreams ||= new Map();
+      let entry = owner.replyStreams.get(key);
+      if (!entry) {
+        entry = { prefix: '', epoch: playbackGen, blocked: false, final: false };
+        owner.replyStreams.set(key, entry);
+        while (owner.replyStreams.size > 160) owner.replyStreams.delete(owner.replyStreams.keys().next().value);
+      }
+      if (entry.final || entry.blocked || entry.epoch !== playbackGen) { entry.blocked = true; return; }
+      const raw = assistantBody(node);
+      if (!raw.startsWith(entry.prefix)) {
+        entry.blocked = true; stopSpeaking();
+        flowLog('reply.prefix-rewritten', 'key=' + key);
+        return; // Audio cannot be retracted: do not replay or read a conflicting tail.
+      }
+      const result = sentencePrefix(raw.slice(entry.prefix.length), final);
+      entry.prefix += raw.slice(entry.prefix.length, entry.prefix.length + result.consumed);
+      entry.final = final;
+      if (final) voice.lastReply = { id: node.messageId || key, text: speakable(raw) };
+      entry.spokenChars ||= 0;
+      for (const chunk of result.chunks) {
+        const text = chunk.slice(0, MAX_SPEAK_CHARS - entry.spokenChars);
+        if (!text) break;
+        entry.spokenChars += text.length;
+        flowLog('reply.sentence', 'key=' + key + ' final=' + final + ' chars=' + text.length);
+        const hook = globalThis.__VC_TEST__ === true && globalThis.__VC_TEST_HOOKS__?.speak;
+        (typeof hook === 'function' ? hook : speak)(text, null, null, { source: 'stream-reply', id: key });
+      }
     }
 
     function pickVoice(voiceURI) {
@@ -326,7 +386,7 @@ window.__ModuleLoader__.load({
       inputRows: [], captureState: 'off', readBlocked: false, readAfterSeq: -1,
       messages: [], subtitles: [], level: 0, speakingText: '', spokenId: null,
       sessionGen: 0, turnId: 0,
-      sending: false, awaitingReply: false, modelRunning: false, runObserved: false, lastReply: null, startedAt: 0,
+      outputPlaying: false, sending: false, awaitingReply: false, modelRunning: false, runObserved: false, lastReply: null, startedAt: 0,
       listeners: new Set(),
       notify() { this.version++; for (const fn of [...this.listeners]) fn(); },
       subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
@@ -366,6 +426,10 @@ window.__ModuleLoader__.load({
       stopSpeaking();
       clearScopedError('draft');
       voice.set({ sending: true, awaitingReply: true, runObserved: false, phase: 'thinking' });
+      // [diag] per-send latency probes: reset first-text / first-sentence markers.
+      voice.sendT0 = performance.now();
+      voice.firstTextLogged = false;
+      voice.firstSentenceLogged = false;
       flowLog('send.start', 'source=' + source + ' mode=' + mode + ' chars=' + text.length);
       try {
         await withDeadline(owner.send(text, mode), 20_000);
@@ -492,7 +556,8 @@ window.__ModuleLoader__.load({
 
     /** Playback drained → resume listening when the loop is armed. */
     function afterSpeaking() {
-      if (voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
+      voice.outputPlaying = false;
+      if (voice.phase === 'speaking' || voice.phase === 'preparing') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
       maybeListen();
     }
 
@@ -511,11 +576,99 @@ window.__ModuleLoader__.load({
         body: JSON.stringify({
           text: item.text,
           speed: Number(prefs.rate) || 1,
-          stream: item.engine !== 'edge',
-          engine: item.engine || 'gsv',
+          stream: item.engine !== 'edge' || edgeStreamingSupported() && !item.buffered,
+          engine: item.engine || 'gsv', traceId: item.traceId,
           voice: item.voice,
         }),
       });
+    }
+
+    function edgeStreamingSupported() {
+      try { return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported('audio/mpeg'); } catch { return false; }
+    }
+    function markPlaying(item, gen) {
+      if (gen !== playbackGen) return;
+      voice.set({ outputPlaying: true, speakingText: item.text || voice.speakingText, ...(voice.phase !== 'off' ? { phase: 'speaking' } : {}) });
+      clearScopedError('synth');
+      if (!item.started) {
+        item.started = true; flowLog('play.start', 'trace=' + (item.traceId || 'system') + ' engine=' + (item.engine || 'system'));
+        if (item.onstart) item.onstart();
+      }
+    }
+    function waitMediaEvent(target, event, signal, action, ms = 5000) {
+      return new Promise((resolve, reject) => {
+        let timer;
+        const clean = () => { clearTimeout(timer); target.removeEventListener(event, ok); target.removeEventListener('error', error); signal.removeEventListener('abort', aborted); };
+        const ok = () => { clean(); resolve(); };
+        const error = () => { clean(); reject(new Error('media ' + event + ' failed')); };
+        const aborted = () => { clean(); reject(new Error('media cancelled')); };
+        target.addEventListener(event, ok, { once: true }); target.addEventListener('error', error, { once: true });
+        signal.addEventListener('abort', aborted, { once: true });
+        timer = setTimeout(error, ms);
+        if (signal.aborted) { aborted(); return; }
+        try { action?.(); } catch (e) { clean(); reject(e); }
+      });
+    }
+    async function playEdgeStream(response, item, synthT0, gen, ctrl) {
+      const media = new MediaSource(), audio = new Audio();
+      const url = URL.createObjectURL(media), reader = response.body.getReader();
+      let buffer, bytes = 0, eof = false, playingRequested = false, cleaned = false, playbackTimer, startTimer;
+      let fail, ended;
+      const failure = new Promise((_, reject) => { fail = reject; }); failure.catch(() => {});
+      const finished = new Promise(resolve => { ended = resolve; });
+      const valid = () => gen === playbackGen && !ctrl.signal.aborted;
+      const onError = () => fail(new Error('MP3 stream playback failed'));
+      const onAbort = () => fail(new Error('MP3 stream cancelled'));
+      const cleanup = () => {
+        if (cleaned) return; cleaned = true; clearTimeout(playbackTimer); clearTimeout(startTimer);
+        fail(new Error('MP3 stream disposed'));
+        void reader.cancel().catch(() => {});
+        if (streamCtl.reader === reader) streamCtl.reader = null;
+        audio.onplaying = audio.onended = audio.onerror = null;
+        ctrl.signal.removeEventListener('abort', onAbort);
+        try { if (buffer?.updating) buffer.abort(); } catch {}
+        audio.pause(); audio.removeAttribute?.('src'); audio.load?.();
+        URL.revokeObjectURL(url);
+        if (audioUrl === url) audioUrl = null;
+        if (gsvAudio === audio) gsvAudio = null;
+        if (streamCtl.cleanup === cleanup) streamCtl.cleanup = null;
+      };
+      streamCtl.cancelled = false; streamCtl.reader = reader; streamCtl.cleanup = cleanup;
+      audioUrl = url; gsvAudio = audio;
+      audio.onplaying = () => { if (valid()) { clearTimeout(startTimer); markPlaying(item, gen); } };
+      audio.onended = () => { if (eof) { flowLog('play.end'); ended(); } else onError(); };
+      audio.onerror = onError;
+      ctrl.signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        await Promise.race([waitMediaEvent(media, 'sourceopen', ctrl.signal, () => { audio.src = url; }), failure]);
+        if (!valid()) return;
+        buffer = media.addSourceBuffer('audio/mpeg');
+        attachEdgeLevel(audio);
+        for (;;) {
+          const { done, value } = await Promise.race([reader.read(), failure]);
+          if (!valid()) return;
+          if (done) break;
+          if (!value?.length) continue;
+          if (!bytes) flowLog('synth.first-byte', 'trace=' + item.traceId + ' engine=edge ms=' + Math.round(performance.now() - synthT0));
+          bytes += value.length;
+          if (bytes > 4 * 1024 * 1024) throw new Error('MP3 sentence stream exceeded byte limit');
+          await Promise.race([waitMediaEvent(buffer, 'updateend', ctrl.signal, () => buffer.appendBuffer(value)), failure]);
+          if (!valid()) return;
+          if (!playingRequested) {
+            playingRequested = true;
+            startTimer = setTimeout(() => fail(new Error('MP3 playback start timeout')), 10000);
+            // Do not await play(): it may await more frames. The reader keeps
+            // feeding the MPEG byte-stream parser until the decoder can play.
+            void audio.play().catch(fail);
+          }
+        }
+        if (!bytes) throw new Error('Edge returned empty audio');
+        eof = true;
+        if (media.readyState === 'open') media.endOfStream();
+        flowLog('synth.body-end', 'trace=' + item.traceId + ' engine=edge bytes=' + bytes + ' ms=' + Math.round(performance.now() - synthT0));
+        playbackTimer = setTimeout(() => fail(new Error('MP3 playback end timeout')), 120000);
+        await Promise.race([finished, failure]);
+      } finally { cleanup(); }
     }
 
     function cancelPrefetch() {
@@ -529,13 +682,16 @@ window.__ModuleLoader__.load({
       if (!next || next.engine !== 'edge') return;
       if (prefetch && prefetch.item === next && prefetch.gen === playbackGen) return;
       cancelPrefetch();
+      next.buffered = true; // One bounded complete next-sentence lookahead keeps gaps short.
       const ctrl = new AbortController();
       const startedAt = performance.now();
-      flowLog('synth.prefetch-start', next.text.slice(0, 40));
+      flowLog('synth.prefetch-start', 'trace=' + next.traceId + ' chars=' + next.text.length);
       prefetch = {
         item: next, gen: playbackGen, ctrl, startedAt,
         promise: requestSynth(next, ctrl).then(async (res) => {
           if (!res.ok || !res.body) throw new Error(await res.text().catch(() => String(res.status)));
+          // [diag] response headers arrived (host finished full synth); blob() still buffers the body.
+          flowLog('synth.headers', 'trace=' + next.traceId + ' prefetch=1 ms=' + Math.round(performance.now() - startedAt));
           return res.blob();
         }),
       };
@@ -548,19 +704,20 @@ window.__ModuleLoader__.load({
       if (!item) { afterSpeaking(); return; }
       const gen = playbackGen;
       gsvPlaying = true;
+      if (voice.phase !== 'off' && !voice.outputPlaying) voice.set({ phase: 'preparing' });
       const finish = () => {
         if (gen !== playbackGen) {
           return;
         }
-        gsvPlaying = false;
+        gsvPlaying = false; voice.outputPlaying = false;
         stopPlaybackLevel();
         if (gsvAudio) { const a = gsvAudio; gsvAudio = null; a.pause(); }
         if (item.onend) item.onend();
-        if (!isSpeaking() && voice.phase === 'speaking') voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
+        if (!isSpeaking() && (voice.phase === 'speaking' || voice.phase === 'preparing')) voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening', speakingText: '' });
         void gsvPump();
       };
       try {
-        flowLog('synth.request', item.text.slice(0, 40) + (item.engine === 'edge' ? ' [edge]' : ' [stream]'));
+        flowLog('synth.request', 'trace=' + item.traceId + ' engine=' + item.engine + ' chars=' + item.text.length);
         const synthT0 = performance.now();
         const own = prefetch && prefetch.item === item && prefetch.gen === gen ? prefetch : null;
         if (own) prefetch = null;
@@ -570,17 +727,28 @@ window.__ModuleLoader__.load({
         primePrefetch();
         let blob = null;
         let res = null;
+        if (item.engine === 'edge' && !own && edgeStreamingSupported() && !item.buffered) {
+          res = await requestSynth(item, ctrl);
+          if (!res.ok || !res.body) throw new Error('Edge stream request failed');
+          flowLog('synth.headers', 'trace=' + item.traceId + ' stream=1 ms=' + Math.round(performance.now() - synthT0));
+          await playEdgeStream(res, item, synthT0, gen, ctrl);
+          if (gen === playbackGen) finish();
+          return;
+        }
         if (item.engine === 'edge') {
+          if (!own) flowLog('synth.buffered-fallback', 'mse=' + edgeStreamingSupported() + ' retry=' + !!item.retried);
           if (own) flowLog('synth.prefetch-hit', 'lead=' + Math.round(synthT0 - own.startedAt) + 'ms');
           blob = await (own ? own.promise : requestSynth(item, ctrl).then(async (r) => {
             if (!r.ok || !r.body) throw new Error(await r.text().catch(() => String(r.status)));
+            // [diag] response headers arrived; blob() below still buffers the full body.
+            flowLog('synth.headers', 'trace=' + item.traceId + ' ms=' + Math.round(performance.now() - synthT0));
             return r.blob();
           }));
         } else {
           res = await requestSynth(item, ctrl);
           if (!res.ok || !res.body) throw new Error(await res.text().catch(() => String(res.status)));
         }
-        flowLog('synth.stream-start', 'ms=' + Math.round(performance.now() - synthT0));
+        flowLog('synth.body-ready', 'ms=' + Math.round(performance.now() - synthT0));
         if (gen !== playbackGen) return;
         streamCtl.cancelled = false;
         streamCtl.sources = [];
@@ -589,13 +757,12 @@ window.__ModuleLoader__.load({
           audioUrl = url;
           const audio = new Audio(url);
           gsvAudio = audio;
+          audio.onplaying = () => markPlaying(item, gen);
           audio.onended = () => { flowLog('play.end'); URL.revokeObjectURL(url); if (audioUrl === url) audioUrl = null; finish(); return; };
           audio.onerror = () => { if (gen !== playbackGen) return; flowLog('play.error'); setScopedError('synth', 'error.synthFailed'); URL.revokeObjectURL(url); if (audioUrl === url) audioUrl = null; finish(); return; };
           attachEdgeLevel(audio);
           await audio.play();
-          flowLog('play.start');
-          clearScopedError('synth');
-          if (item.onstart) item.onstart();
+          // The playing event, not fetch completion, marks audible playback.
           return;
         }
         await playPcmStream(res.body, item, synthT0, gen);
@@ -603,15 +770,16 @@ window.__ModuleLoader__.load({
         finish();
       } catch (firstError) {
         if (gen !== playbackGen) return;
-        // One bounded retry: a cold-start race must not silently drop a sentence.
-        console.debug('[voice-conversation] chunk failed, retrying once:', firstError && firstError.message);
-        if (item.retried) { setScopedError('synth', 'error.synthFailed'); finish(); return; }
+        // Once playback started, replaying the sentence would duplicate speech.
+        if (item.started || item.retried) { setScopedError('synth', 'error.synthFailed'); finish(); return; }
+        flowLog('synth.retry', 'engine=' + item.engine + ' buffered=true');
         item.retried = true;
+        if (item.engine === 'edge') item.buffered = true;
         gsvPlaying = false;
         stopPlaybackLevel();
         if (gsvAudio) { const a = gsvAudio; gsvAudio = null; a.pause(); }
         gsvQueue.unshift(item);
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 250));
         if (gen !== playbackGen) return;
         void gsvPump();
         return;
@@ -626,7 +794,7 @@ window.__ModuleLoader__.load({
       }
       const prefs = loadPrefs();
       if (voice.phase !== 'off' && voice.phase !== 'connecting' && voice.phase !== 'error') {
-        voice.set({ phase: 'speaking', speakingText: body });
+        voice.set({ phase: voice.outputPlaying ? 'speaking' : 'preparing', speakingText: body });
       }
       const engine = prefs.voiceURI === GSV_VOICE ? 'gsv'
         : (prefs.voiceURI || '').startsWith('edge:') ? 'edge' : 'system';
@@ -635,14 +803,14 @@ window.__ModuleLoader__.load({
         const chunks = splitSentences(body);
         chunks.forEach((chunk, index) => {
           gsvQueue.push({
-            text: chunk,
+            text: chunk, traceId: crypto.randomUUID(),
             engine,
             voice: engine === 'edge' ? prefs.voiceURI.slice(5) : undefined,
             onend: index === chunks.length - 1 ? onend : null,
             onstart: index === 0 ? onstart : null,
           });
         });
-        void gsvPump();
+        if (gsvPlaying) primePrefetch(); else void gsvPump();
         return;
       }
       if (!TTS_OK) { setScopedError('synth', 'error.synthFailed'); if (onend) onend(); afterSpeaking(); return; }
@@ -664,6 +832,7 @@ window.__ModuleLoader__.load({
       const gen = playbackGen;
       sysActive = true;
       synthSpeaking = true;
+      if (voice.phase !== 'off' && !voice.outputPlaying) voice.set({ phase: 'preparing' });
       const synth = window.speechSynthesis;
       const prefs = loadPrefs();
       let index = 0;
@@ -677,18 +846,15 @@ window.__ModuleLoader__.load({
           return;
         }
         const chunkIndex = index++;
+        if (voice.phase !== 'off') voice.set({ phase: 'preparing' });
         const utterance = new SpeechSynthesisUtterance(item.chunks[chunkIndex]);
         const v = pickVoice(prefs.voiceURI);
         if (v) utterance.voice = v;
         utterance.lang = (v && v.lang) || 'zh-CN';
         const rate = Number(prefs.rate);
         if (rate > 0) utterance.rate = rate;
-        if (chunkIndex === 0 && item.onstart) {
-          utterance.onstart = () => { if (gen !== playbackGen) return; clearScopedError('synth'); item.onstart(); };
-        } else if (chunkIndex === 0) {
-          utterance.onstart = () => { if (gen === playbackGen) clearScopedError('synth'); };
-        }
-        utterance.onend = next;
+        utterance.onstart = () => markPlaying(item, gen);
+        utterance.onend = () => { if (gen === playbackGen) { voice.outputPlaying = false; next(); } };
         utterance.onerror = () => { if (gen !== playbackGen) return; setScopedError('synth', 'error.synthFailed'); next(); };
         synth.speak(utterance);
       };
@@ -697,6 +863,8 @@ window.__ModuleLoader__.load({
 
     function stopSpeaking() {
       playbackGen++;
+      voice.outputPlaying = false;
+      if (streamCtl.cleanup) { streamCtl.cleanup(); streamCtl.cleanup = null; }
       if (TTS_OK) window.speechSynthesis.cancel();
       sysActive = false;
       synthSpeaking = false;
@@ -711,7 +879,7 @@ window.__ModuleLoader__.load({
       if (streamCtl.reader) { const r = streamCtl.reader; streamCtl.reader = null; void r.cancel().catch(() => {}); }
       for (const src of streamCtl.sources.splice(0)) { try { src.stop(); } catch { /* noop */ } }
       stopPlaybackLevel();
-      if (voice.phase === 'speaking') voice.set({ phase: 'listening', speakingText: '' });
+      if (voice.phase === 'speaking' || voice.phase === 'preparing') voice.set({ phase: 'listening', speakingText: '' });
     }
 
     /* ---------- real audio levels ---------- */
@@ -811,9 +979,7 @@ window.__ModuleLoader__.load({
         nextTime = when + audioBuf.duration;
         if (!lastSrc) {
           flowLog('synth.first-audio', 'ms=' + Math.round(performance.now() - synthT0));
-          flowLog('play.start');
-          clearScopedError('synth');
-          if (item.onstart) item.onstart();
+          markPlaying(item, gen);
         }
         lastSrc = src;
       }
@@ -1250,6 +1416,7 @@ window.__ModuleLoader__.load({
     }
 
     function stopAnswer() {
+      voice.readBlocked = true;
       stopSpeaking();
       voice.set({ phase: voice.modelRunning || voice.awaitingReply ? 'thinking' : 'listening' });
       maybeListen();
@@ -1305,6 +1472,26 @@ window.__ModuleLoader__.load({
       const nodes = chatNodes(chat), partial = chat?.legacy?.partial || chat?.partial || null;
       if (owner.lastNodes === nodes && owner.lastPartial === partial) return;
       owner.lastNodes = nodes; owner.lastPartial = partial;
+      // [diag] latency probes: first visible streaming text and first complete
+      // sentence boundary of the current reply, relative to send.start.
+      if (voice.sendT0 && partial) {
+        const ptext = assistantBody(partial);
+        if (ptext) {
+          if (!voice.firstTextLogged) {
+            voice.firstTextLogged = true;
+            flowLog('reply.first-text', 'ms=' + Math.round(performance.now() - voice.sendT0));
+          }
+          if (!voice.firstSentenceLogged && /[。！？!?；;\n]/.test(ptext)) {
+            voice.firstSentenceLogged = true;
+            flowLog('reply.first-sentence', 'ms=' + Math.round(performance.now() - voice.sendT0));
+          }
+        }
+      }
+      const latestUserSeq = Math.max(-1, ...nodes.filter(n => n.kind === 'user' || n.kind === 'steering').map(n => Number(n.seq)));
+      if (owner.seenReplies !== null && latestUserSeq > (owner.lastUserSeq ?? -1)) {
+        voice.readBlocked = false; voice.readAfterSeq = latestUserSeq;
+      }
+      owner.lastUserSeq = latestUserSeq;
       // Match each optimistic speech row to exactly one native user record.
       const used = new Set(voice.inputRows.filter(r => r.matchedSeq !== null).map(r => r.matchedSeq));
       for (const row of voice.inputRows) {
@@ -1316,12 +1503,19 @@ window.__ModuleLoader__.load({
       const messages = projectMessages(chat);
       if (messages.length !== voice.messages.length || messages.some((m, i) => m.id !== voice.messages[i]?.id || m.text !== voice.messages[i]?.text || m.streaming !== voice.messages[i]?.streaming)) voice.set({ messages });
       if (owner.seenReplies === null) {
+        owner.replyStreams = new Map();
+        const key = replyKey(partial);
+        if (key) owner.replyStreams.set(key, { prefix: '', epoch: playbackGen, blocked: true });
         owner.seenReplies = new Set(nodes.filter(n => n.kind === 'assistant').map(n => n.messageId));
         return; // display existing history without replaying it on open or return
       }
       const fresh = [];
       for (let i = nodes.length - 1; i >= 0; i--) {
         const node = nodes[i];
+        if (node.kind === 'assistant' && node.interrupted) {
+          const entry = owner.replyStreams?.get(replyKey(node));
+          if (entry && !entry.blocked && entry.epoch === playbackGen) { entry.blocked = true; stopSpeaking(); }
+        }
         if (node.kind !== 'assistant' || !node.messageId) continue;
         if (owner.seenReplies.has(node.messageId)) break;
         owner.seenReplies.add(node.messageId);
@@ -1331,9 +1525,13 @@ window.__ModuleLoader__.load({
       for (const node of fresh) {
         if (voice.owner !== owner || voice.sessionGen !== gen) return;
         flowLog('reply.final', 'chars=' + assistantBody(node).length);
-        const hook = globalThis.__VC_TEST__ === true && globalThis.__VC_TEST_HOOKS__?.speak;
-        (typeof hook === 'function' ? hook : speak)(assistantBody(node), null, null, { source: 'reply', id: node.messageId });
+        const timing = node.timing;
+        if (timing && [timing.stepStartTime, timing.firstTokenTime, timing.completedTime].every(Number.isFinite)) {
+          flowLog('reply.native-timing', 'stepToFirstDeltaMs=' + (timing.firstTokenTime-timing.stepStartTime) + ' firstDeltaToFinalMs=' + (timing.completedTime-timing.firstTokenTime));
+        }
+        observeReply(node, true, owner);
       }
+      observeReply(partial, false, owner);
     }
 
     function acceptRunning(running, owner = voice.owner, gen = voice.sessionGen) {
@@ -1506,6 +1704,7 @@ window.__ModuleLoader__.load({
         case 'listening': return voice.muted ? t('state.muted') : (voice.requesting ? t('state.requesting') : t('state.listening'));
         case 'transcribing': return t('state.transcribing');
         case 'thinking': return t('state.thinking');
+        case 'preparing': return t('state.preparing');
         case 'speaking': return t('state.speaking');
         case 'error': return t('state.error');
         default: return t('state.off');
@@ -1785,7 +1984,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dsh-vc-stage-actions' },
             voice.captureState === 'error' || voice.captureState === 'recovering' ? h('button', { type: 'button', className: 'dsh-vc-retry', onClick: retryMic }, t('action.retry')) : null,
             voice.errors.synth ? h('button', { type: 'button', className: 'dsh-vc-retry', onClick: retrySpeaking }, t('action.retrySpeak')) : null,
-            voice.phase === 'speaking' ? h('button', { type: 'button', className: 'dsh-vc-stopanswer', onClick: stopAnswer }, t('action.stopSpeaking')) : null)),
+            isSpeaking() ? h('button', { type: 'button', className: 'dsh-vc-stopanswer', onClick: stopAnswer }, t('action.stopSpeaking')) : null)),
         h(CaptionsList, { t }),
         h('footer', { className: 'dsh-vc-dock' },
           voice.keyboardOpen ? h('form', { className: 'dsh-vc-composer', onSubmit: event => { event.preventDefault(); if (canSubmit()) void dispatchMessage(voice.keyboardDraft, 'keyboard'); } },
@@ -1879,7 +2078,7 @@ window.__ModuleLoader__.load({
       voice, rec, svc, sessionViews, splitSentences, dictionary: zh, VoiceEffects, VoiceMiniBar, VoiceStartButton, meaningfulTranscript,
       dispatchMessage, updateKeyboardDraft, setKeyboardOpen, setPageVisible, keyboardKeyDown,
       resumeListening, isCurrentTurn, landTranscript, advanceVad, startListening, finishListening, releaseRecorder,
-      processPcm, checkCapture, joinRecognition, deliverInputs, inputRow, updateInput, pumpRecognition, encodeWave, uint8ToBase64, acceptChatSnapshot, acceptRunning, projectMessages,
+      processPcm, checkCapture, joinRecognition, deliverInputs, inputRow, updateInput, pumpRecognition, sentencePrefix, observeReply, edgeStreamingSupported, playEdgeStream, encodeWave, uint8ToBase64, acceptChatSnapshot, acceptRunning, projectMessages,
       setScopedError, clearScopedError, retryMic, retrySpeaking, stopSpeaking, isSpeaking, engineInfo,
       endVoice, startVoice, publishLevel, SafeMarkdown, CaptionsList, VoicePageGuarded,
       setOwner(owner) { voice.owner = owner; },
