@@ -20,7 +20,7 @@ DeepSeek Harness 的持续语音与键盘对话页面。使用当前原生 Sessi
 - Edge 桥逐块发送 MPEG，Host 代理透传并处理背压/取消，客户端支持 `MediaSource.isTypeSupported('audio/mpeg')` 时边接收边播放。浏览器不支持时明确回退整段兼容播放。
 - “正在准备语音”与实际 playing 事件后的“正在回答”分开显示；已经起播的句子失败后不自动从头重读。
 
-93 项 Node 测试通过，其中一个测试运行 5 项 Python 桥接 HTTP 测试。客户端播放器使用受控 MediaSource/Audio 替身，**尚未验证用户 Mac 的实际解码和优化后耗时**。基线数据是优化前实测；不能把预期节省当成实测。
+93 项 Node 测试通过，其中一个测试运行 5 项 Python 桥接 HTTP 测试。自动测试的播放器使用受控替身；随后 [run-20261024-02](docs/diagnostics/voice-latency/run-20261024-02/report.md) 已在用户 Mac 上验证 MSE 解码与提前起播。三个主要样本首段正文→首声为 2.00 / 2.16 / 2.25 秒；精确统计与未验证范围见 [Codex 复核](docs/diagnostics/voice-latency/run-20261024-02/review.md)。
 
 更新必须同时部署仓库 `edge-bridge/edge-server.py` 到本机实际桥接目录并重启桥接。完整更新、复测与 GitHub 回传提示词见 [UPGRADE-v2.2.md](docs/UPGRADE-v2.2.md)。
 
@@ -45,7 +45,9 @@ npm test
 node tests/render-preview.mjs
 ```
 
-93 项 Node 自动测试及 5 项 Python 子测试覆盖实际客户端模块、React 组件、Worklet 源码与 Host handler；设备、识别网络和计时器使用受控替身。**测试通过不代表用户 Mac 上已验收**：扬声器回声、插话准确率、后台收音、云端识别延迟及原有全局卡顿需实机复测。
+开发验证需 Node.js 22+ 和 Python 3.10+（python3 指向该版本；可使用已有 Edge venv 的 bin PATH 前缀）。
+
+93 项 Node 自动测试及 5 项 Python 子测试覆盖实际客户端模块、React 组件、Worklet 源码与 Host handler；设备、识别网络和计时器使用受控替身。自动测试与实机结果分别记录；当前流式主路径已有复测证据，冷启动、真实断网/合成错误及声学环境差异仍未验收。
 
 [静态界面预览](docs/voice-preview.html) 由实际组件生成，含转写中的气泡；不是实机截图，也不调用麦克风/模型。
 
