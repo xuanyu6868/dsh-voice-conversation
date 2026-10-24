@@ -4,7 +4,7 @@
 
 流式文字中的完整句子提前合成；首句独立；Edge MPEG 从桥到播放器逐块传递；真实 playing 事件才显示正在回答。一句预取、持续录音、会话上下文和插话取消继续保留。
 
-此版本基于诊断分支 `9a135d5`，包含 PR #1 的埋点与基线。优化后的速度尚未在用户 Mac 上测量，不能把旧版报告或 93 项 Node 测试当作新版本实机验收。
+此版本基于诊断分支 `9a135d5`，包含 PR #1 的埋点与基线。首次优化后复测已完成，见 [run-20261024-02 复核](diagnostics/voice-latency/run-20261024-02/review.md)。以下完整流程保留供后续复测；已部署用户优先按复核文档切回 main 并核对运行文件，不必重复部署。
 
 ## 给 DeepSeek Harness 的完整提示词
 
@@ -15,7 +15,7 @@
 
 更新步骤：
 1. 核实实际生效的插件目录，记录旧版本/提交并备份本机额外修改，以可回滚方式部署 v2.2.0（client.js / impl.mjs / 包版本一致）。保留云端凭据、音色、识别配置及其他插件现状。
-2. 运行 npm ci、npm run check、npm test。当前应为 93 项 Node 测试，其中桥接测试另执行 5 项 Python HTTP 子测试；开发机需 Node 22+ 与 python3。
+2. 运行 npm ci、npm run check、npm test。当前应为 93 项 Node 测试，其中桥接测试另执行 5 项 Python HTTP 子测试；开发机需 Node 22+ 与 Python 3.10+，python3 应指向该版本；本机可使用现有 Edge venv 的 bin PATH 前缀。
 3. 这次桥接文件必须一起更新。核实真正运行的 edge-server.py 路径，通常为 ~/.dsh/edge-tts/edge-server.py；从仓库 edge-bridge/edge-server.py 同步，备份旧文件，准确识别并停止旧桥接进程一次，再按现有宿主管理方式启动新版。不要只重载 client.js 就声称 Edge 链路更新完成。
 4. 核实健康检查正常、仅目标端口上的预期桥接进程在运行；插件重载一次，并记录新日志中的实际运行证据。
 
