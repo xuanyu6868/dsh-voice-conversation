@@ -1,4 +1,4 @@
-# 语音对话插件 v2.1（@local/voice-conversation）
+# 语音对话插件 v2.2（@local/voice-conversation）
 
 DeepSeek Harness 的持续语音与键盘对话页面。使用当前原生 Session 的历史、模型、工具与权限。
 
@@ -10,6 +10,19 @@ DeepSeek Harness 的持续语音与键盘对话页面。使用当前原生 Sessi
 - **页面操作不再停录音**：录音独立于视图与对话阶段。最小化、设置、键盘、查看历史、模型工作和朗读不主动释放麦克风。
 - **语音打断**：朗读时持续收音，连续语音起判即停止播放和预取；最终识别使用宿主 `steer` 中断旧轮次，避免单独 cancel 请求迟到而取消新问题。
 - **真实连接状态**：必须收到 PCM 音频帧才显示麦克风已连接；音频停滞会显示恢复中，尝试恢复 AudioContext、有限次重连，不能一直假报“正在聆听”。
+
+## v2.2 回复延迟优化
+
+基于 [run-20261024-01 实机报告](docs/diagnostics/voice-latency/run-20261024-01/report.md) 实施：
+
+- 宿主 partial 有稳定的 turn/step 身份时，首个完整句出现即送 TTS；final 仅补未读尾部。历史不重播、插话后不续读旧句，改写已读前缀时停止该消息朗读。
+- 首句按句子发送，不再等待合并到 120 字；长句仍限长。保留一句预取，并在后续句子新到达时补启动预取。
+- Edge 桥逐块发送 MPEG，Host 代理透传并处理背压/取消，客户端支持 `MediaSource.isTypeSupported('audio/mpeg')` 时边接收边播放。浏览器不支持时明确回退整段兼容播放。
+- “正在准备语音”与实际 playing 事件后的“正在回答”分开显示；已经起播的句子失败后不自动从头重读。
+
+93 项 Node 测试通过，其中一个测试运行 5 项 Python 桥接 HTTP 测试。客户端播放器使用受控 MediaSource/Audio 替身，**尚未验证用户 Mac 的实际解码和优化后耗时**。基线数据是优化前实测；不能把预期节省当成实测。
+
+更新必须同时部署仓库 `edge-bridge/edge-server.py` 到本机实际桥接目录并重启桥接。完整更新、复测与 GitHub 回传提示词见 [UPGRADE-v2.2.md](docs/UPGRADE-v2.2.md)。
 
 ## 实现边界
 
@@ -23,7 +36,7 @@ DeepSeek Harness 的持续语音与键盘对话页面。使用当前原生 Sessi
 
 ## 更新与验证
 
-交给 Harness 的完整更新提示词及实机验收见 [UPGRADE-v2.1.md](docs/UPGRADE-v2.1.md)。代码说明见 [HANDOFF.md](HANDOFF.md)。默认朗读仍用现有云端 Edge TTS 桥接，无需重配模型。
+交给 Harness 的完整更新提示词及实机验收见 [UPGRADE-v2.2.md](docs/UPGRADE-v2.2.md)。代码说明见 [HANDOFF.md](HANDOFF.md)。默认朗读仍用现有云端 Edge TTS 桥接，无需重配模型。
 
 ```bash
 npm ci
@@ -32,7 +45,7 @@ npm test
 node tests/render-preview.mjs
 ```
 
-70 项自动测试覆盖实际客户端模块、React 组件、Worklet 源码与 Host handler；设备、识别网络和计时器使用受控替身。**测试通过不代表用户 Mac 上已验收**：扬声器回声、插话准确率、后台收音、云端识别延迟及原有全局卡顿需实机复测。
+93 项 Node 自动测试及 5 项 Python 子测试覆盖实际客户端模块、React 组件、Worklet 源码与 Host handler；设备、识别网络和计时器使用受控替身。**测试通过不代表用户 Mac 上已验收**：扬声器回声、插话准确率、后台收音、云端识别延迟及原有全局卡顿需实机复测。
 
 [静态界面预览](docs/voice-preview.html) 由实际组件生成，含转写中的气泡；不是实机截图，也不调用麦克风/模型。
 

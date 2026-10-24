@@ -1,4 +1,26 @@
-# 语音对话 v2.1 实施与交接
+# 语音对话 v2.2 交接
+
+当前版本实施说明与给 Harness 的完整更新/复测提示词见 [docs/UPGRADE-v2.2.md](docs/UPGRADE-v2.2.md)。下文 v2.1 说明保留为输入链路背景；其中“partial 不朗读”的旧行为由 v2.2 替代。
+
+## 本轮来源与改动
+
+- 基于诊断 PR #1 的 `9a135d5`，保留 `29e20d5` 埋点与完整脱敏基线材料，未修改历史采样数据。
+- 实施提前逐句合成、首句不合并、Edge 桥/Host/MSE 流式链路、实际起播状态、插话/会话切换取消、final 补尾防重读。
+- 原生 partial 需 turn/step 数字身份；不具备身份的旧宿主保守采用 final。代码/链接/未闭合 Markdown 不被当成自然句边界；单消息朗读总量仍最多 4000 字。
+- Edge 首个活动句优先流式；至多一句预取保留完整音频，以维持下一句衔接。流式响应使用 MPEG 字节流 SourceBuffer，**不将任意网络 MP3 片段当成独立文件 decodeAudioData**。
+- 不支持 MSE MPEG 时回退完整 MP3。起播前错误可进行一次 250ms 后的完整音频重试；实际播放后错误只报错，避免整句重复。流式播放启动等待上限 10 秒，结束等待上限 120 秒；网络沿用有界超时，停止通话立即撤销客户端等待与资源。桥接断连在下次写入时被检测，随后关闭上游生成器。
+- 有界序列匹配覆盖：句子只认当前 owner/sessionGen 与 turn/step；已经停止的播放代次不接受迟到 tail/final；模型改写已经读出的 raw prefix 时停止该消息，不能撤销已说出的声音。
+- 新增 traceId 串联 synth.request / prefetch / headers / first-byte / body-end / play.start 和 Host tts.first-byte/stream-done/done。没有增加对话正文日志。若宿主提供 node.timing，则附 step/start→首次 delta、首次 delta→消息完整；首次 delta 可是 reasoning/tool，不冒充首段正文或纯提供方 TTFT。
+
+## 验证与限制
+
+`npm run check`、`npm test` 通过，93 个 Node 用例（含 5 个 Python HTTP 子测试）。新增客户端用例验证响应 EOF 前起播、final 不重复、停止与断流、无 MSE 兼容、动态预取；Host 用例验证首块透传、背压与断连、中途错误不混入 JSON；Python 使用真实本机 HTTP 与可控 Edge 生成器测试分块/完整响应/错误/断连。
+
+Mac 上真实 MSE MPEG 解码、代理/云端网络、插话声学表现和优化后延迟仍待 Harness 实测。报告中的 7.83/7.96/9.45/11.57 秒均为旧版基线，“说完”由 endpoint-700ms 推算；模型首文字前 3.6–5 秒未做内部归因。此次修改不承诺模型首字等待消失，也不将本地替身测试计为云端效果通过。
+
+---
+
+## v2.1 输入链路背景
 
 日期：2026-10-22。此文覆盖当前实现；v2.0 的确认卡片、倒计时、键盘/朗读暂停录音行为已被本版替代。旧版升级文档仅作历史参考。
 

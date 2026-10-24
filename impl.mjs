@@ -218,18 +218,23 @@ export function apply(ctx, userConfig) {
     return edgeStarting
   }
 
-  async function callEdge(text, speed, voice) {
+  async function edgeResponse(text, speed, voice, stream = false, signal) {
     await ensureEdge()
     const res = await fetch(`${EDGE_BASE}/speak`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, speed, voice }),
-      signal: AbortSignal.timeout(60_000),
+      body: JSON.stringify({ text, speed, voice, stream }),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
     })
     if (!res.ok) {
       const detail = await res.text().catch(() => '')
       throw new Error(`edge-tts ${res.status}: ${detail.slice(0, 300)}`)
     }
+    return res
+  }
+
+  async function callEdge(text, speed, voice) {
+    const res = await edgeResponse(text, speed, voice)
     const buf = Buffer.from(await res.arrayBuffer())
     // [diag] bridge-reported upstream time-to-first-audio-chunk (ms), per-request.
     buf.edgeFirstChunkMs = res.headers.get('x-edge-first-chunk-ms') || 'na'
@@ -476,6 +481,7 @@ export function apply(ctx, userConfig) {
       const speed = Number(payload?.speed) || 1
       const engine = typeof payload?.engine === 'string' ? payload.engine : config.engine
       const stream = payload?.stream === true
+      const trace = typeof payload?.traceId === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(payload.traceId) ? payload.traceId : 'none'
       if (!text || text.length > MAX_TEXT_CHARS) {
         sendJson(res, 400, { message: `text required (<= ${MAX_TEXT_CHARS} chars)` }); return
       }
@@ -487,10 +493,49 @@ export function apply(ctx, userConfig) {
         const readyMs = Date.now() - reqT0
         if (stream) {
           if (engine === 'edge') {
-            const mp3 = await callEdge(text, speed, payload?.voice)
-            res.statusCode = 200
-            res.setHeader('content-type', 'audio/mpeg')
-            res.end(mp3)
+            const ctrl = new AbortController()
+            let reader
+            const aborted = () => { ctrl.abort(); void reader?.cancel().catch(() => {}) }
+            const closed = () => { if (!res.writableEnded) aborted() }
+            res.on('close', closed); req.on('aborted', aborted)
+            try {
+              const upstream = await edgeResponse(text, speed, payload?.voice, true, ctrl.signal)
+              if (!upstream.body) throw new Error('Edge returned no body')
+              reader = upstream.body.getReader()
+              let bytes = 0, chunks = 0
+              for (;;) {
+                const { done, value } = await reader.read()
+                if (ctrl.signal.aborted || res.destroyed) throw new Error('Edge client disconnected')
+                if (done) break
+                if (!value?.length) continue
+                if (!chunks) {
+                  res.statusCode = 200
+                  res.setHeader('content-type', 'audio/mpeg')
+                  res.setHeader('cache-control', 'no-store')
+                  res.setHeader('x-accel-buffering', 'no')
+                  res.setHeader('x-voice-stream', upstream.headers.get('x-edge-stream') === '1' ? 'mp3' : 'buffered-bridge')
+                  res.setHeader('x-edge-first-chunk-ms', upstream.headers.get('x-edge-first-chunk-ms') || 'na')
+                  res.flushHeaders?.()
+                  appendLog(`${config.home}/voice-flow.log`, `${new Date().toISOString()} tts.first-byte trace=${trace} engine=edge readyMs=${readyMs} atMs=${Date.now()-reqT0}\n`)
+                }
+                chunks++; bytes += value.length
+                if (!res.write(value)) await new Promise((resolve, reject) => {
+                  const clean = () => { res.off('drain', drain); res.off('close', close); res.off('error', error); ctrl.signal.removeEventListener('abort', close) }
+                  const drain = () => { clean(); resolve() }
+                  const error = () => { clean(); reject(new Error('Edge downstream error')) }
+                  const close = () => { clean(); reject(new Error('Edge client disconnected')) }
+                  res.once('drain', drain); res.once('close', close); res.once('error', error)
+                  ctrl.signal.addEventListener('abort', close, { once: true })
+                  if (ctrl.signal.aborted || res.destroyed) close()
+                })
+              }
+              if (!chunks) throw new Error('Edge returned empty audio')
+              appendLog(`${config.home}/voice-flow.log`, `${new Date().toISOString()} tts.stream-done trace=${trace} engine=edge chunks=${chunks} bytes=${bytes} totalMs=${Date.now()-reqT0}\n`)
+              res.end()
+            } finally {
+              ctrl.abort(); await reader?.cancel().catch(() => {})
+              res.off('close', closed); req.off('aborted', aborted)
+            }
             return
           }
           if (engine === 'minimax') {
@@ -551,7 +596,7 @@ export function apply(ctx, userConfig) {
             : await callTts(text, speed)
         try {
           appendLog(`${config.home}/voice-flow.log`,
-            `${new Date().toISOString()} tts.done chars=${text.length} readyMs=${readyMs} synthMs=${Date.now() - synthT0} bytes=${wav.length} edgeFirstChunkMs=${wav.edgeFirstChunkMs || 'na'}\n`)
+            `${new Date().toISOString()} tts.done trace=${trace} chars=${text.length} readyMs=${readyMs} synthMs=${Date.now() - synthT0} bytes=${wav.length} edgeFirstChunkMs=${wav.edgeFirstChunkMs || 'na'}\n`)
         } catch { /* noop */ }
         res.statusCode = 200
         res.setHeader('content-type', engine === 'edge' ? 'audio/mpeg' : 'audio/wav')
@@ -561,7 +606,8 @@ export function apply(ctx, userConfig) {
         try {
           appendLog(`${config.home}/proxy-errors.log`, `${new Date().toISOString()} 502 ${message}\n`)
         } catch { /* logging must never break the route */ }
-        sendJson(res, 502, { message })
+        if (res.headersSent || res.destroyed || res.writableEnded) res.destroy?.()
+        else sendJson(res, 502, { message })
       } finally { inFlight--; touch() }
       } catch { try { sendJson(res, 500, { message: 'internal error' }) } catch {} }
     },
