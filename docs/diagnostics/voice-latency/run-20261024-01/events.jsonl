@@ -1,0 +1,144 @@
+{"ts": "2026-10-24T10:44:10.586Z", "ev": "voice.input-start", "id": "live:2", "barge": false, "seq": 1}
+{"ts": "2026-10-24T10:44:11.389Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 2}
+{"ts": "2026-10-24T10:44:11.409Z", "ev": "asr.result", "final": false, "ms": 20, "seq": 3}
+{"ts": "2026-10-24T10:44:12.591Z", "ev": "asr.request", "incremental": true, "samples": 38400, "seq": 4}
+{"ts": "2026-10-24T10:44:12.614Z", "ev": "asr.result", "final": false, "ms": 23, "seq": 5}
+{"ts": "2026-10-24T10:44:12.686Z", "ev": "voice.endpoint", "id": "live:2", "ms": 2099, "seq": 6}
+{"ts": "2026-10-24T10:44:12.688Z", "ev": "asr.request", "incremental": false, "samples": 40000, "seq": 7}
+{"ts": "2026-10-24T10:44:12.706Z", "ev": "asr.result", "final": true, "ms": 18, "seq": 8}
+{"ts": "2026-10-24T10:44:12.706Z", "ev": "asr.discarded", "reason": "empty-or-symbols", "seq": 9}
+{"ts": "2026-10-24T10:44:23.228Z", "ev": "voice.end", "seq": 10}
+{"ts": "2026-10-24T10:44:23.256Z", "ev": "voice.start", "engine": "edge", "seq": 11}
+{"ts": "2026-10-24T10:44:23.318Z", "ev": "mic.connected", "impl": "AudioWorklet", "seq": 12}
+{"ts": "2026-10-24T10:44:25.211Z", "ev": "voice.end", "seq": 13}
+{"ts": "2026-10-24T10:46:21.643Z", "ev": "voice.start", "engine": "edge", "seq": 14}
+{"ts": "2026-10-24T10:46:21.703Z", "ev": "mic.connected", "impl": "AudioWorklet", "seq": 15}
+{"ts": "2026-10-24T10:46:23.119Z", "ev": "voice.input-start", "id": "live:3", "barge": false, "seq": 16}
+{"ts": "2026-10-24T10:46:23.923Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 17}
+{"ts": "2026-10-24T10:46:23.985Z", "ev": "asr.first-text", "id": "live:3", "ms": 866, "seq": 18}
+{"ts": "2026-10-24T10:46:23.985Z", "ev": "asr.result", "final": false, "ms": 62, "seq": 19}
+{"ts": "2026-10-24T10:46:24.517Z", "ev": "voice.endpoint", "id": "live:3", "ms": 1399, "seq": 20}
+{"ts": "2026-10-24T10:46:24.520Z", "ev": "asr.request", "incremental": false, "samples": 28800, "seq": 21}
+{"ts": "2026-10-24T10:46:24.582Z", "ev": "asr.result", "final": true, "ms": 62, "seq": 22}
+{"ts": "2026-10-24T10:46:24.582Z", "ev": "send.start", "source": "asr", "mode": "queue", "chars": 6, "seq": 23}
+{"ts": "2026-10-24T10:46:24.596Z", "ev": "send.accepted", "source": "asr", "seq": 24}
+{"ts": "2026-10-24T10:46:28.651Z", "ev": "reply.first-text", "ms": 4070, "seq": 25}
+{"ts": "2026-10-24T10:46:29.995Z", "ev": "reply.final", "chars": 94, "seq": 26}
+{"ts": "2026-10-24T10:46:29.996Z", "ev": "speak.enqueue", "engine": "edge", "chars": 82, "seq": 27}
+{"ts": "2026-10-24T10:46:29.996Z", "ev": "synth.request", "engine": "edge", "seq": 28}
+{"ts": "2026-10-24T10:46:33.260Z", "ev": "tts.done", "chars": 80, "readyMs": 1, "synthMs": 3261, "bytes": 82368, "edgeFirstChunkMs": 2213, "seq": 29}
+{"ts": "2026-10-24T10:46:33.262Z", "ev": "synth.headers", "ms": 3266, "seq": 30}
+{"ts": "2026-10-24T10:46:33.263Z", "ev": "synth.stream-start", "ms": 3267, "seq": 31}
+{"ts": "2026-10-24T10:46:33.268Z", "ev": "play.start", "seq": 32}
+{"ts": "2026-10-24T10:46:46.997Z", "ev": "play.end", "seq": 33}
+{"ts": "2026-10-24T10:46:50.719Z", "ev": "voice.input-start", "id": "live:4", "barge": false, "seq": 34}
+{"ts": "2026-10-24T10:46:51.521Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 35}
+{"ts": "2026-10-24T10:46:51.580Z", "ev": "asr.first-text", "id": "live:4", "ms": 861, "seq": 36}
+{"ts": "2026-10-24T10:46:51.580Z", "ev": "asr.result", "final": false, "ms": 60, "seq": 37}
+{"ts": "2026-10-24T10:46:52.710Z", "ev": "asr.request", "incremental": true, "samples": 38400, "seq": 38}
+{"ts": "2026-10-24T10:46:52.795Z", "ev": "asr.result", "final": false, "ms": 84, "seq": 39}
+{"ts": "2026-10-24T10:46:53.921Z", "ev": "asr.request", "incremental": true, "samples": 57600, "seq": 40}
+{"ts": "2026-10-24T10:46:54.023Z", "ev": "asr.result", "final": false, "ms": 101, "seq": 41}
+{"ts": "2026-10-24T10:46:55.119Z", "ev": "asr.request", "incremental": true, "samples": 76800, "seq": 42}
+{"ts": "2026-10-24T10:46:55.242Z", "ev": "asr.result", "final": false, "ms": 123, "seq": 43}
+{"ts": "2026-10-24T10:46:55.316Z", "ev": "asr.request", "incremental": false, "samples": 80000, "seq": 44}
+{"ts": "2026-10-24T10:46:55.416Z", "ev": "asr.result", "final": true, "ms": 100, "seq": 45}
+{"ts": "2026-10-24T10:46:56.221Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 46}
+{"ts": "2026-10-24T10:46:56.278Z", "ev": "asr.result", "final": false, "ms": 57, "seq": 47}
+{"ts": "2026-10-24T10:46:57.123Z", "ev": "voice.endpoint", "id": "live:4", "ms": 6405, "seq": 48}
+{"ts": "2026-10-24T10:46:57.126Z", "ev": "asr.request", "incremental": false, "samples": 33600, "seq": 49}
+{"ts": "2026-10-24T10:46:57.186Z", "ev": "asr.result", "final": true, "ms": 60, "seq": 50}
+{"ts": "2026-10-24T10:46:57.187Z", "ev": "send.start", "source": "asr", "mode": "queue", "chars": 38, "seq": 51}
+{"ts": "2026-10-24T10:46:57.202Z", "ev": "send.accepted", "source": "asr", "seq": 52}
+{"ts": "2026-10-24T10:47:01.518Z", "ev": "reply.first-text", "ms": 4332, "seq": 53}
+{"ts": "2026-10-24T10:47:01.650Z", "ev": "reply.first-sentence", "ms": 4463, "seq": 54}
+{"ts": "2026-10-24T10:47:02.529Z", "ev": "reply.final", "chars": 17, "seq": 55}
+{"ts": "2026-10-24T10:47:02.529Z", "ev": "speak.enqueue", "engine": "edge", "chars": 17, "seq": 56}
+{"ts": "2026-10-24T10:47:02.529Z", "ev": "synth.request", "engine": "edge", "seq": 57}
+{"ts": "2026-10-24T10:47:05.193Z", "ev": "tts.done", "chars": 17, "readyMs": 1, "synthMs": 2660, "bytes": 18288, "edgeFirstChunkMs": 2208, "seq": 58}
+{"ts": "2026-10-24T10:47:05.194Z", "ev": "synth.headers", "ms": 2665, "seq": 59}
+{"ts": "2026-10-24T10:47:05.195Z", "ev": "synth.stream-start", "ms": 2665, "seq": 60}
+{"ts": "2026-10-24T10:47:05.197Z", "ev": "play.start", "seq": 61}
+{"ts": "2026-10-24T10:47:08.247Z", "ev": "play.end", "seq": 62}
+{"ts": "2026-10-24T10:47:09.005Z", "ev": "reply.final", "chars": 153, "seq": 63}
+{"ts": "2026-10-24T10:47:09.005Z", "ev": "speak.enqueue", "engine": "edge", "chars": 139, "seq": 64}
+{"ts": "2026-10-24T10:47:09.005Z", "ev": "synth.request", "engine": "edge", "seq": 65}
+{"ts": "2026-10-24T10:47:09.005Z", "ev": "synth.prefetch-start", "seq": 66}
+{"ts": "2026-10-24T10:47:11.638Z", "ev": "tts.done", "chars": 39, "readyMs": 2, "synthMs": 2629, "bytes": 37584, "edgeFirstChunkMs": 1922, "seq": 67}
+{"ts": "2026-10-24T10:47:12.331Z", "ev": "tts.done", "chars": 99, "readyMs": 1, "synthMs": 3322, "bytes": 83232, "edgeFirstChunkMs": 2210, "seq": 68}
+{"ts": "2026-10-24T10:47:11.640Z", "ev": "synth.headers", "prefetch": "1", "ms": 2635, "seq": 69}
+{"ts": "2026-10-24T10:47:12.333Z", "ev": "synth.headers", "ms": 3327, "seq": 70}
+{"ts": "2026-10-24T10:47:12.333Z", "ev": "synth.stream-start", "ms": 3328, "seq": 71}
+{"ts": "2026-10-24T10:47:12.336Z", "ev": "play.start", "seq": 72}
+{"ts": "2026-10-24T10:47:26.197Z", "ev": "play.end", "seq": 73}
+{"ts": "2026-10-24T10:47:26.197Z", "ev": "synth.request", "engine": "edge", "seq": 74}
+{"ts": "2026-10-24T10:47:26.197Z", "ev": "synth.prefetch-hit", "seq": 75}
+{"ts": "2026-10-24T10:47:26.197Z", "ev": "synth.stream-start", "ms": 0, "seq": 76}
+{"ts": "2026-10-24T10:47:26.203Z", "ev": "play.start", "seq": 77}
+{"ts": "2026-10-24T10:47:32.467Z", "ev": "play.end", "seq": 78}
+{"ts": "2026-10-24T10:47:41.531Z", "ev": "voice.input-start", "id": "live:5", "barge": false, "seq": 79}
+{"ts": "2026-10-24T10:47:42.332Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 80}
+{"ts": "2026-10-24T10:47:42.392Z", "ev": "asr.first-text", "id": "live:5", "ms": 861, "seq": 81}
+{"ts": "2026-10-24T10:47:42.392Z", "ev": "asr.result", "final": false, "ms": 59, "seq": 82}
+{"ts": "2026-10-24T10:47:43.233Z", "ev": "voice.endpoint", "id": "live:5", "ms": 1703, "seq": 83}
+{"ts": "2026-10-24T10:47:43.235Z", "ev": "asr.request", "incremental": false, "samples": 33600, "seq": 84}
+{"ts": "2026-10-24T10:47:43.302Z", "ev": "asr.result", "final": true, "ms": 66, "seq": 85}
+{"ts": "2026-10-24T10:47:43.302Z", "ev": "send.start", "source": "asr", "mode": "queue", "chars": 8, "seq": 86}
+{"ts": "2026-10-24T10:47:43.330Z", "ev": "send.accepted", "source": "asr", "seq": 87}
+{"ts": "2026-10-24T10:47:48.273Z", "ev": "reply.first-text", "ms": 4972, "seq": 88}
+{"ts": "2026-10-24T10:47:48.519Z", "ev": "reply.first-sentence", "ms": 5217, "seq": 89}
+{"ts": "2026-10-24T10:47:50.786Z", "ev": "reply.final", "chars": 169, "seq": 90}
+{"ts": "2026-10-24T10:47:50.786Z", "ev": "speak.enqueue", "engine": "edge", "chars": 142, "seq": 91}
+{"ts": "2026-10-24T10:47:50.786Z", "ev": "synth.request", "engine": "edge", "seq": 92}
+{"ts": "2026-10-24T10:47:50.786Z", "ev": "synth.prefetch-start", "seq": 93}
+{"ts": "2026-10-24T10:47:53.397Z", "ev": "tts.done", "chars": 22, "readyMs": 1, "synthMs": 2609, "bytes": 22032, "edgeFirstChunkMs": 2148, "seq": 94}
+{"ts": "2026-10-24T10:47:54.094Z", "ev": "tts.done", "chars": 120, "readyMs": 0, "synthMs": 3306, "bytes": 108288, "edgeFirstChunkMs": 2172, "seq": 95}
+{"ts": "2026-10-24T10:47:53.399Z", "ev": "synth.headers", "prefetch": "1", "ms": 2613, "seq": 96}
+{"ts": "2026-10-24T10:47:54.096Z", "ev": "synth.headers", "ms": 3310, "seq": 97}
+{"ts": "2026-10-24T10:47:54.097Z", "ev": "synth.stream-start", "ms": 3311, "seq": 98}
+{"ts": "2026-10-24T10:47:54.101Z", "ev": "play.start", "seq": 99}
+{"ts": "2026-10-24T10:48:12.146Z", "ev": "play.end", "seq": 100}
+{"ts": "2026-10-24T10:48:12.147Z", "ev": "synth.request", "engine": "edge", "seq": 101}
+{"ts": "2026-10-24T10:48:12.147Z", "ev": "synth.prefetch-hit", "seq": 102}
+{"ts": "2026-10-24T10:48:12.147Z", "ev": "synth.stream-start", "ms": 0, "seq": 103}
+{"ts": "2026-10-24T10:48:12.151Z", "ev": "play.start", "seq": 104}
+{"ts": "2026-10-24T10:48:15.826Z", "ev": "play.end", "seq": 105}
+{"ts": "2026-10-24T10:48:17.529Z", "ev": "voice.input-start", "id": "live:6", "barge": false, "seq": 106}
+{"ts": "2026-10-24T10:48:18.332Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 107}
+{"ts": "2026-10-24T10:48:18.391Z", "ev": "asr.first-text", "id": "live:6", "ms": 862, "seq": 108}
+{"ts": "2026-10-24T10:48:18.391Z", "ev": "asr.result", "final": false, "ms": 59, "seq": 109}
+{"ts": "2026-10-24T10:48:18.530Z", "ev": "voice.endpoint", "id": "live:6", "ms": 1001, "seq": 110}
+{"ts": "2026-10-24T10:48:18.531Z", "ev": "asr.request", "incremental": false, "samples": 22400, "seq": 111}
+{"ts": "2026-10-24T10:48:18.578Z", "ev": "asr.result", "final": true, "ms": 47, "seq": 112}
+{"ts": "2026-10-24T10:48:18.578Z", "ev": "send.start", "source": "asr", "mode": "queue", "chars": 3, "seq": 113}
+{"ts": "2026-10-24T10:48:18.608Z", "ev": "send.accepted", "source": "asr", "seq": 114}
+{"ts": "2026-10-24T10:48:22.416Z", "ev": "reply.first-text", "ms": 3838, "seq": 115}
+{"ts": "2026-10-24T10:48:22.416Z", "ev": "reply.first-sentence", "ms": 3838, "seq": 116}
+{"ts": "2026-10-24T10:48:22.705Z", "ev": "reply.final", "chars": 28, "seq": 117}
+{"ts": "2026-10-24T10:48:22.706Z", "ev": "speak.enqueue", "engine": "edge", "chars": 25, "seq": 118}
+{"ts": "2026-10-24T10:48:22.706Z", "ev": "synth.request", "engine": "edge", "seq": 119}
+{"ts": "2026-10-24T10:48:25.650Z", "ev": "tts.done", "chars": 25, "readyMs": 1, "synthMs": 2940, "bytes": 26928, "edgeFirstChunkMs": 2222, "seq": 120}
+{"ts": "2026-10-24T10:48:25.652Z", "ev": "synth.headers", "ms": 2946, "seq": 121}
+{"ts": "2026-10-24T10:48:25.652Z", "ev": "synth.stream-start", "ms": 2947, "seq": 122}
+{"ts": "2026-10-24T10:48:25.655Z", "ev": "play.start", "seq": 123}
+{"ts": "2026-10-24T10:48:30.146Z", "ev": "play.end", "seq": 124}
+{"ts": "2026-10-24T10:48:35.034Z", "ev": "voice.input-start", "id": "live:7", "barge": false, "seq": 125}
+{"ts": "2026-10-24T10:48:35.837Z", "ev": "asr.request", "incremental": true, "samples": 19200, "seq": 126}
+{"ts": "2026-10-24T10:48:35.896Z", "ev": "asr.first-text", "id": "live:7", "ms": 862, "seq": 127}
+{"ts": "2026-10-24T10:48:35.896Z", "ev": "asr.result", "final": false, "ms": 59, "seq": 128}
+{"ts": "2026-10-24T10:48:36.930Z", "ev": "voice.endpoint", "id": "live:7", "ms": 1896, "seq": 129}
+{"ts": "2026-10-24T10:48:36.932Z", "ev": "asr.request", "incremental": false, "samples": 36800, "seq": 130}
+{"ts": "2026-10-24T10:48:37.006Z", "ev": "asr.result", "final": true, "ms": 74, "seq": 131}
+{"ts": "2026-10-24T10:48:37.006Z", "ev": "send.start", "source": "asr", "mode": "queue", "chars": 7, "seq": 132}
+{"ts": "2026-10-24T10:48:37.020Z", "ev": "send.accepted", "source": "asr", "seq": 133}
+{"ts": "2026-10-24T10:48:40.634Z", "ev": "reply.first-text", "ms": 3628, "seq": 134}
+{"ts": "2026-10-24T10:48:40.634Z", "ev": "reply.first-sentence", "ms": 3628, "seq": 135}
+{"ts": "2026-10-24T10:48:41.082Z", "ev": "reply.final", "chars": 36, "seq": 136}
+{"ts": "2026-10-24T10:48:41.082Z", "ev": "speak.enqueue", "engine": "edge", "chars": 32, "seq": 137}
+{"ts": "2026-10-24T10:48:41.082Z", "ev": "synth.request", "engine": "edge", "seq": 138}
+{"ts": "2026-10-24T10:48:44.183Z", "ev": "tts.done", "chars": 31, "readyMs": 1, "synthMs": 3098, "bytes": 36720, "edgeFirstChunkMs": 2166, "seq": 139}
+{"ts": "2026-10-24T10:48:44.190Z", "ev": "synth.headers", "ms": 3108, "seq": 140}
+{"ts": "2026-10-24T10:48:44.190Z", "ev": "synth.stream-start", "ms": 3108, "seq": 141}
+{"ts": "2026-10-24T10:48:44.193Z", "ev": "play.start", "seq": 142}
+{"ts": "2026-10-24T10:48:50.320Z", "ev": "play.end", "seq": 143}
+{"ts": "2026-10-24T10:49:50.626Z", "ev": "voice.end", "seq": 144}
