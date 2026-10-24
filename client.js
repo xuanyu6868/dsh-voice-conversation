@@ -366,6 +366,10 @@ window.__ModuleLoader__.load({
       stopSpeaking();
       clearScopedError('draft');
       voice.set({ sending: true, awaitingReply: true, runObserved: false, phase: 'thinking' });
+      // [diag] per-send latency probes: reset first-text / first-sentence markers.
+      voice.sendT0 = performance.now();
+      voice.firstTextLogged = false;
+      voice.firstSentenceLogged = false;
       flowLog('send.start', 'source=' + source + ' mode=' + mode + ' chars=' + text.length);
       try {
         await withDeadline(owner.send(text, mode), 20_000);
@@ -536,6 +540,8 @@ window.__ModuleLoader__.load({
         item: next, gen: playbackGen, ctrl, startedAt,
         promise: requestSynth(next, ctrl).then(async (res) => {
           if (!res.ok || !res.body) throw new Error(await res.text().catch(() => String(res.status)));
+          // [diag] response headers arrived (host finished full synth); blob() still buffers the body.
+          flowLog('synth.headers', 'prefetch=1 ms=' + Math.round(performance.now() - startedAt));
           return res.blob();
         }),
       };
@@ -574,6 +580,8 @@ window.__ModuleLoader__.load({
           if (own) flowLog('synth.prefetch-hit', 'lead=' + Math.round(synthT0 - own.startedAt) + 'ms');
           blob = await (own ? own.promise : requestSynth(item, ctrl).then(async (r) => {
             if (!r.ok || !r.body) throw new Error(await r.text().catch(() => String(r.status)));
+            // [diag] response headers arrived; blob() below still buffers the full body.
+            flowLog('synth.headers', 'ms=' + Math.round(performance.now() - synthT0));
             return r.blob();
           }));
         } else {
@@ -1305,6 +1313,21 @@ window.__ModuleLoader__.load({
       const nodes = chatNodes(chat), partial = chat?.legacy?.partial || chat?.partial || null;
       if (owner.lastNodes === nodes && owner.lastPartial === partial) return;
       owner.lastNodes = nodes; owner.lastPartial = partial;
+      // [diag] latency probes: first visible streaming text and first complete
+      // sentence boundary of the current reply, relative to send.start.
+      if (voice.sendT0 && partial) {
+        const ptext = assistantBody(partial);
+        if (ptext) {
+          if (!voice.firstTextLogged) {
+            voice.firstTextLogged = true;
+            flowLog('reply.first-text', 'ms=' + Math.round(performance.now() - voice.sendT0));
+          }
+          if (!voice.firstSentenceLogged && /[。！？!?；;\n]/.test(ptext)) {
+            voice.firstSentenceLogged = true;
+            flowLog('reply.first-sentence', 'ms=' + Math.round(performance.now() - voice.sendT0));
+          }
+        }
+      }
       // Match each optimistic speech row to exactly one native user record.
       const used = new Set(voice.inputRows.filter(r => r.matchedSeq !== null).map(r => r.matchedSeq));
       for (const row of voice.inputRows) {

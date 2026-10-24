@@ -230,7 +230,10 @@ export function apply(ctx, userConfig) {
       const detail = await res.text().catch(() => '')
       throw new Error(`edge-tts ${res.status}: ${detail.slice(0, 300)}`)
     }
-    return Buffer.from(await res.arrayBuffer())
+    const buf = Buffer.from(await res.arrayBuffer())
+    // [diag] bridge-reported upstream time-to-first-audio-chunk (ms), per-request.
+    buf.edgeFirstChunkMs = res.headers.get('x-edge-first-chunk-ms') || 'na'
+    return buf
   }
 
   async function callTts(text, speed) {
@@ -548,7 +551,7 @@ export function apply(ctx, userConfig) {
             : await callTts(text, speed)
         try {
           appendLog(`${config.home}/voice-flow.log`,
-            `${new Date().toISOString()} tts.done chars=${text.length} readyMs=${readyMs} synthMs=${Date.now() - synthT0} bytes=${wav.length}\n`)
+            `${new Date().toISOString()} tts.done chars=${text.length} readyMs=${readyMs} synthMs=${Date.now() - synthT0} bytes=${wav.length} edgeFirstChunkMs=${wav.edgeFirstChunkMs || 'na'}\n`)
         } catch { /* noop */ }
         res.statusCode = 200
         res.setHeader('content-type', engine === 'edge' ? 'audio/mpeg' : 'audio/wav')

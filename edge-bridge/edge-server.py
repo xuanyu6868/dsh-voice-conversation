@@ -1,5 +1,5 @@
 """Edge TTS local bridge: POST /speak {text, voice, rate} -> mp3 bytes."""
-import asyncio, json, os
+import asyncio, json, os, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import edge_tts
 
@@ -12,11 +12,12 @@ def to_edge_rate(rate):
         pct = 0
     return ('+' if pct >= 0 else '') + str(pct) + '%'
 
-async def synthesize(text, voice, rate):
+async def synthesize(text, voice, rate, mark):
     stream = edge_tts.Communicate(text, voice or DEFAULT_VOICE, rate=to_edge_rate(rate))
     out = bytearray()
     async for chunk in stream.stream():
         if chunk['type'] == 'audio':
+            if mark[0] is None: mark[0] = time.monotonic()  # [diag] upstream first audio chunk
             out += chunk['data']
     return bytes(out)
 
@@ -32,9 +33,12 @@ class H(BaseHTTPRequestHandler):
             text = str(payload.get('text', '')).strip()
             if not text or len(text) > 4000:
                 self._err(400, 'text required (<=4000)'); return
-            data = asyncio.run(synthesize(text, payload.get('voice'), payload.get('speed', 1)))
+            t0 = time.monotonic(); mark = [None]  # [diag]
+            data = asyncio.run(synthesize(text, payload.get('voice'), payload.get('speed', 1), mark))
+            fcm = 'na' if mark[0] is None else str(round((mark[0] - t0) * 1000))
             self.send_response(200)
             self.send_header('content-type', 'audio/mpeg')
+            self.send_header('x-edge-first-chunk-ms', fcm)  # [diag]
             self.send_header('content-length', str(len(data)))
             self.end_headers(); self.wfile.write(data)
         except Exception as e:
